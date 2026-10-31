@@ -1,0 +1,4 @@
+* text=auto
+*.ico -text
+/tools/ffmpeg.exe filter=lfs diff=lfs merge=lfs -text
+/tools/ffprobe.exe filter=lfs diff=lfs merge=lfs -text

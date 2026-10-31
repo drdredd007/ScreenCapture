@@ -1,0 +1,20 @@
+# Local recording library, drafts, settings and diagnostics
+/Videos/
+/Projects/
+/Cache/
+/settings.json
+/settings.json.*
+/Moments.log*
+
+# Local release copies and disposable build/test workspaces
+/build/
+/Moments.exe
+/Moments.dll
+/Moments.deps.json
+/Moments.runtimeconfig.json
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*_wpftmp.csproj
