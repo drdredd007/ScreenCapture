@@ -50,6 +50,15 @@ public partial class Editor : Window
             RefreshCuts();LoadGameEvents();
             foreach(var t in info.Tracks){
                 var player=new MediaPlayer();
+                player.MediaOpened+=(_,_)=>{
+                    if(closing)return;
+                    player.Position=TimeSpan.FromSeconds(Timeline.Value);
+                    if(playing)player.Play();else player.Pause();
+                };
+                player.MediaFailed+=(_,e)=>{
+                    Home.Log("Audio preview / "+t.Name+": "+e.ErrorException);
+                    if(!closing){Pause();Say("Audio preview unavailable: "+t.Name+". "+e.ErrorException.Message);}
+                };
                 var box=AddAudioLane(t,player);
                 stems.Add(t,(player,box));
             }

@@ -78,7 +78,10 @@ internal static class AvSyncChecks
         }finally{Home.Clear(folder);}
     }
     static async Task Verify(string file,int tracks,Action<string> note,string label){
-        for(int i=0;i<tracks;i++){
+        Check((await Media.Probe(file)).Tracks.Count==tracks,label+" editable stem count changed");
+        using var streamDoc=JsonDocument.Parse(await Proc.Run("ffprobe",["-v","error","-select_streams","a","-show_streams","-of","json",file]));
+        int count=streamDoc.RootElement.GetProperty("streams").GetArrayLength();
+        for(int i=0;i<count;i++){
             var offsets=await Measure(file,i);
             Check(offsets.All(d=>Math.Abs(d)<.10),label+" track "+i+" A/V offset: "+string.Join(", ",offsets));
             Check(Math.Abs(offsets[^1]-offsets[0])<.07,label+" offset grew during recording");

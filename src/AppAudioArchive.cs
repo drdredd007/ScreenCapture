@@ -138,12 +138,11 @@ internal sealed class AppAudioArchive
                 labels.Add(stem.Label);
             }
             args.AddRange(["-map","0:v:0","-c:v","copy"]);
-            for(int i=0;i<labels.Count;i++)args.AddRange(["-map",$"{i+1}:a:0"]);
-            if(labels.Count>0)args.AddRange(["-c:a","aac","-b:a","160k"]);
-            if(layout.Microphone){args.AddRange(["-map","0:a:0",$"-c:a:{labels.Count}","copy"]);labels.Add("Microphone");}
-            for(int i=0;i<labels.Count;i++)args.AddRange([$"-metadata:s:a:{i}","handler_name="+labels[i],$"-metadata:s:a:{i}","title="+labels[i],
-                $"-disposition:a:{i}",i==0?"default":"0"]);
+            var audioInputs=Enumerable.Range(1,labels.Count).Select(i=>$"{i}:a:0").ToList();
+            if(layout.Microphone){audioInputs.Add("0:a:0");labels.Add("Microphone");}
+            Media.AddPlaybackAudio(args,audioInputs,labels);
             args.AddRange(["-t",Home.N(duration),"-movflags","+faststart",output]);await Proc.Run("ffmpeg",args);
         }finally{foreach(var file in manifests)File.Delete(file);}
     }
 }
+

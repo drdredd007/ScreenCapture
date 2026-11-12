@@ -107,7 +107,7 @@ public partial class AssemblyWindow
                 channel.Open=true;channel.Player.Position=channel.Desired;
                 if(channel.Playing)channel.Player.Play();else channel.Player.Pause();
             };
-            channel.Player.MediaFailed+=(_,e)=>{if(!closing && channels.GetValueOrDefault(key)==channel){Pause();Say("Windows preview: "+e.ErrorException.Message);}};
+            channel.Player.MediaFailed+=(_,e)=>{Home.Log("Montage audio preview: "+e.ErrorException);if(!closing && channels.GetValueOrDefault(key)==channel){Pause();Say("Windows preview: "+e.ErrorException.Message);}};
             channel.Player.Open(new Uri(file));return;
         }
         bool transportChanged=playing!=channel.Playing;
@@ -120,3 +120,4 @@ public partial class AssemblyWindow
     void CloseChannel(int key){if(channels.Remove(key,out var c))c.Player.Close();}
     void ClosePlayers(){foreach(int key in channels.Keys.ToArray())CloseChannel(key);}
 }
+

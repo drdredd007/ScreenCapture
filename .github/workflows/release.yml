@@ -98,9 +98,11 @@ jobs:
 
           Library list and tiles now show saved event types (Kill, Double kill, Triple kill, etc.) with repeated-event counts. Version 1.1.4 users can install this release with Settings → Updates → Update and restart.
 
+          Audio preview uses decoded PCM WAV instead of the Windows AAC decoder. New multi-track files include a default AAC-LC stereo playback mix while retaining separate editable stems. Existing files can be re-exported for compatibility.
+
           Download **$zip**, extract the whole archive to a writable folder, and run **Moments.exe**. FFmpeg and FFprobe are included. Requires **.NET Desktop Runtime 10 x64**.
 
-          Validation: Windows builds; independent-window/input/lifecycle checks; A–B range, audio selection, mixed-FPS, undo/redo, queued-send and project-switch tests; decoded selection export; project persistence and library event-badge UI checks; update/restart/rollback and existing audio, LoL, sync and cadence regressions.
+          Validation: Windows builds; independent-window/input/lifecycle checks; A–B range, audio selection, mixed-FPS, undo/redo, queued-send and project-switch tests; decoded selection export; project persistence and library event-badge UI checks; silent-first-track/default-mix/PCM-preview checks; update/restart/rollback and existing audio, LoL, sync and cadence regressions.
 
           Source commit: $env:GITHUB_SHA
           SHA-256: $hash
