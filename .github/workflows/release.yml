@@ -2,7 +2,7 @@ name: Windows build and release
 
 on:
   push:
-    branches: [main, codex/video-cadence-updates]
+    branches: [main, codex/fix-audio-startup]
   workflow_dispatch:
 
 permissions:
@@ -88,11 +88,13 @@ jobs:
           @"
           Moments $version for Windows 11 x64.
 
-          Fixes recorded-video stutter by scheduling video capture independently of buffered audio. Preserves the shared A/V clock. Adds Settings → Updates: check GitHub releases, download the Windows ZIP with progress/cancellation and SHA-256 verification, then open the download folder. Installation: close Moments and extract the downloaded ZIP into the existing Moments folder.
+          Fixes a recording startup regression introduced in 1.1.2: pending Windows audio-pipe header writes could fail with InvalidOperationException and leave capture waiting for a timeout. Audio startup now waits correctly and reports early audio failures immediately, retaining full error details in Moments.log. Preserves the independent video scheduling, shared A/V clock and GitHub update downloads from 1.1.2.
+
+          NVIDIA users: the included FFmpeg requires NVENC API 13.1 (driver 610.00 or newer). If the log reports Required: 13.1 Found: 13.0, update the compatible NVIDIA driver and fully restart Moments; otherwise recording falls back to CPU x264.
 
           Download **$zip**, extract the whole archive to a writable folder, and run **Moments.exe**. FFmpeg and FFprobe are included. Requires **.NET Desktop Runtime 10 x64**.
 
-          Validation: Windows Release build, audio regression tests, LoL parser/scheduler tests and WPF settings/library UI tests, decoded flash/tone synchronization checks, live-pipe video cadence measurements and update download/integrity tests. Live LoL event delivery and audio-device capture still require a real game session on a Windows PC.
+          Validation: Windows Release build, deterministic pending-IValueTaskSource startup regression and cancellation tests, startup error propagation, audio continuity, LoL parser/scheduler, WPF settings/library, decoded flash/tone synchronization, live Windows named-pipe video cadence using the production header writer, and update download/integrity tests. GPU capture, WASAPI devices and live LoL delivery still require a real session on a Windows PC.
 
           Source commit: $env:GITHUB_SHA
           SHA-256: $hash

@@ -3,6 +3,13 @@ namespace Moments;
 internal static class AudioPipeFormat
 {
     public const int FramesPerBlock=480,Channels=4,Rate=48000,BytesPerBlock=FramesPerBlock*Channels*2;
+    public static void WriteHeader(Stream stream,CancellationToken cancellationToken)
+    {
+        // Pipe writes may return an incomplete IValueTaskSource-backed ValueTask.
+        // Its GetResult does not block. Convert once to Task before waiting on
+        // the dedicated audio thread so WASAPI starts only after the header.
+        stream.WriteAsync(Header(),cancellationToken).AsTask().GetAwaiter().GetResult();
+    }
     public static byte[] Header(){
         using var data=new MemoryStream();using var writer=new BinaryWriter(data);
         // Unknown-length PCM WAV over a pipe. The demuxer's ignore_length flag

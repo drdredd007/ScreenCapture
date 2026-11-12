@@ -85,9 +85,14 @@ internal sealed class Capture
             process.OutputDataReceived+=(_,e)=>{if(e.Data?.StartsWith("frame=")==true && int.TryParse(e.Data.AsSpan(6),out int n)&&n>0)firstFrame.TrySetResult();};
             process.Exited+=(_,_)=>firstFrame.TrySetException(new IOException("Could not start video capture. "+ErrorText));
             process.Start();ChildJob.Track(process);process.BeginErrorReadLine();process.BeginOutputReadLine();
-            await firstFrame.Task.WaitAsync(TimeSpan.FromSeconds(14));
+            await CaptureStartup.Wait(firstFrame.Task,audio?.Completion,TimeSpan.FromSeconds(14),()=>ErrorText);
             Home.Log($"Capture started: {(Replay?"replay":"recording")}, {w}x{h}, {profile.Fps} FPS, {(nvenc?"NVENC":"x264")}, shared A/V epoch, startup {Clock.Elapsed.TotalMilliseconds:0} ms");
-        }catch{await EndProcess();Home.Clear(Folder);throw;}
+        }catch(Exception ex){
+            Home.Log("Capture startup: "+ex+Environment.NewLine+ErrorText);
+            // Unblock FFmpeg input probing before asking its command loop to quit.
+            if(audio!=null){var a=audio;audio=null;await Task.Run(a.Dispose);}
+            await EndProcess();Home.Clear(Folder);throw;
+        }
     }
     string[] Segments()=>Directory.GetFiles(Folder,"*.mkv").Order(StringComparer.Ordinal).ToArray();
     public void Prune()

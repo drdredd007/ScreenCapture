@@ -24,7 +24,7 @@ internal static class VideoCadenceChecks
         var feed=Task.Run(async()=>{
             await pipe.WaitForConnectionAsync(cancel.Token);var clock=Stopwatch.StartNew();byte[] pcm=new byte[3840];
             try{
-                if(independent)await pipe.WriteAsync(AudioPipeFormat.Header(),cancel.Token);
+                if(independent)AudioPipeFormat.WriteHeader(pipe,cancel.Token);
                 for(int i=0;!cancel.IsCancellationRequested;i++){
                     await pipe.WriteAsync(pcm,cancel.Token);
                     double delay=(i+1)*10-clock.Elapsed.TotalMilliseconds;
