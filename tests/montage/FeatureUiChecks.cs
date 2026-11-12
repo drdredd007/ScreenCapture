@@ -64,8 +64,8 @@ internal static class FeatureUiChecks
         foreach(var wrap in Find<StackPanel>(window,"ClipList").Children.OfType<WrapPanel>())foreach(var card in wrap.Children.OfType<Button>())
             Require(card.ActualWidth<=wrap.ActualWidth && card.ActualHeight>100,"tile exceeds viewport or preview missing");
         Shot(window,Path.Combine(reportDirectory,"library-tiles-compact.png"));
-        Find<TextBox>(window,"Search").Text="sample 01";await Layout(window);Require(Cards(window).Count()==1,"tile search differs from list search");
-        Click(window,"ListViewButton");await Layout(window);Require(Cards(window).Count()==1 && !Settings.Load().LibraryTiles,"list switch lost filter or persistence");
+        Find<TextBox>(window,"Search").Text="sample 01";await Layout(window);Require(Cards(window).Count()==1,"tile search differs from list search");await Layout(window);Shot(window,Path.Combine(reportDirectory,"library-event-badges-tiles.png"));
+        Click(window,"ListViewButton");await Layout(window);Require(Cards(window).Count()==1 && !Settings.Load().LibraryTiles,"list switch lost filter or persistence");Shot(window,Path.Combine(reportDirectory,"library-event-badges-list.png"));
         Find<TextBox>(window,"Search").Text="does-not-exist";await Layout(window);Require(Cards(window).Count()==0,"empty search");
         window.Width=1090;window.Height=750;Click(window,"SettingsNav");await Layout(window);
         var options=Find<WrapPanel>(window,"LolEventOptions").Children.OfType<CheckBox>().ToArray();
