@@ -76,12 +76,14 @@ internal sealed class Settings
     public bool Mic {get;set;}=true;
     public bool Auto {get;set;}=true;
     public List<string> Games {get;set;}=[];
+    public LolAutoSaveOptions LolAutoSave {get;set;}=new();
+    public bool LibraryTiles {get;set;}=false;
     static string FileName=>Path.Combine(Home.Root,"settings.json");
     public static Settings Load()
     {
         try {var s=JsonSerializer.Deserialize<Settings>(File.ReadAllText(FileName))??new();
             s.Quality=Math.Clamp(s.Quality,0,Profile.All.Length-1); s.Minutes=s.Minutes==10?10:5;
-            s.Games??=[]; return s;}
+            s.Games??=[]; s.LolAutoSave??=new(); return s;}
         catch(Exception ex) when (ex is IOException or JsonException){return new();}
     }
     public void Save(){File.WriteAllText(FileName+".tmp",JsonSerializer.Serialize(this,new JsonSerializerOptions{WriteIndented=true}));File.Move(FileName+".tmp",FileName,true);}
@@ -156,4 +158,5 @@ internal static class Proc
         return result;
     }
 }
+
 

@@ -12,6 +12,7 @@ public partial class Editor : Window
     readonly CancellationTokenSource life=new();
     CancellationTokenSource? exporting;
     readonly List<Interval> cuts=[];
+    readonly ClipEvent[] gameEvents;
     readonly Dictionary<Track, (MediaPlayer Player,CheckBox Box)> stems=[];
     readonly DispatcherTimer timer=new(){Interval=TimeSpan.FromMilliseconds(50)};
     Task? work,loading;
@@ -21,7 +22,7 @@ public partial class Editor : Window
     readonly Stopwatch playback=new();
     internal Editor(string path)
     {
-        this.path=path;InitializeComponent();
+        this.path=path;gameEvents=ClipEvents.Read(path)?.Events??[];InitializeComponent();
         Video.Failed+=err=>{if(!closing){Pause();Say("Preview: "+err);}};
         Style=(Style)FindResource(typeof(Window));
         var file=new FileInfo(path);
@@ -43,7 +44,7 @@ public partial class Editor : Window
         try{
             info=await Media.Probe(path,life.Token);b=info.Duration;Timeline.Maximum=b;
             FileMeta.Text=$"{info.Width} × {info.Height}   ·   {info.Fps:0.##} FPS\n{info.VideoCodec.ToUpperInvariant()}   ·   {Home.Time(b)}";
-            RefreshCuts();
+            RefreshCuts();LoadGameEvents();
             foreach(var t in info.Tracks){
                 var player=new MediaPlayer();
                 var box=AddAudioLane(t,player);
@@ -133,4 +134,5 @@ public partial class Editor : Window
         }catch(OperationCanceledException){Say("Export canceled.");}catch(Exception ex){Home.Log(ex.ToString());Say(ex.Message);}
     }
 }
+
 

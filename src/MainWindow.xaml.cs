@@ -35,7 +35,7 @@ public partial class MainWindow : Window
         Deactivated+=(_,_)=>StopListening();
         HotkeyButton.LostKeyboardFocus+=(_,_)=>StopListening();
         HotkeyButton.IsVisibleChanged+=(_,_)=>{if(!HotkeyButton.IsVisible)StopListening();};
-        AutoBox.IsChecked=cfg.Auto;MicBox.IsChecked=cfg.Mic;SystemBox.IsChecked=cfg.SystemAudio;AppTracksBox.IsChecked=cfg.SeparateApps;RefreshGames();
+        AutoBox.IsChecked=cfg.Auto;MicBox.IsChecked=cfg.Mic;SystemBox.IsChecked=cfg.SystemAudio;AppTracksBox.IsChecked=cfg.SeparateApps;RefreshGames();InitializeAutoSave();RefreshLibraryViewButtons();
         tray.Text="Moments · Capture Studio";tray.Icon=System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath!)??System.Drawing.SystemIcons.Application;
         var menu=Theme.TrayMenu();menu.Items.Add("Open Moments",null,(_,_)=>Restore());
         menu.Items.Add("Save replay",null,async (_,_)=>await Guard(SaveCurrentReplay));
@@ -60,9 +60,9 @@ public partial class MainWindow : Window
     }
     async void OnClosing(object? s,CancelEventArgs e)
     {
-        if(closed)return;e.Cancel=true;if(quitting)return;quitting=true;timer.Stop();Message("Finishing recording…");
+        if(closed)return;e.Cancel=true;if(quitting)return;quitting=true;timer.Stop();lolTimer.Stop();lolLife.Cancel();Message("Finishing recording…");
         await gate.WaitAsync();try{if(capture!=null)await StopCapture();}catch(Exception ex){Home.Log(ex.ToString());}
-        finally{StopListening();Native.UnregisterHotKey(hwnd,hotkeyId);waiter?.Unregister(null);showEvent.Dispose();tray.Visible=false;tray.Dispose();closed=true;gate.Release();_=Dispatcher.BeginInvoke(()=>System.Windows.Application.Current.Shutdown());}
+        finally{StopListening();Native.UnregisterHotKey(hwnd,hotkeyId);waiter?.Unregister(null);showEvent.Dispose();lolClient.Dispose();tray.Visible=false;tray.Dispose();closed=true;gate.Release();_=Dispatcher.BeginInvoke(()=>System.Windows.Application.Current.Shutdown());}
     }
     nint Hook(nint h,int msg,nint wp,nint lp,ref bool handled){
         if(msg==0x312 && hotkeyOk && wp==hotkeyId){handled=true;if(hotkeyListener==null)ReplayPress("WM_HOTKEY");}
@@ -95,6 +95,7 @@ public partial class MainWindow : Window
                 }
                 if(capture.Replay){
                     if(!cfg.Auto || !Native.IsWindow(capture.Source.Handle) || !IsSelectedGame(gamePid)){await StopCapture();return;}
+                    await SaveAutoReplay();
                     capture.Prune();
                 }
             }else if(cfg.Auto && cfg.Games.Count>0 && ++scanTick%2==0){
@@ -125,12 +126,16 @@ public partial class MainWindow : Window
     {
         var session=new Capture(target,Profile.All[cfg.Quality],cfg.SystemAudio,cfg.Mic,replay,cfg.Minutes,name,cfg.SeparateApps);
         Message("Preparing video and audio…");RecordButton.IsEnabled=false;
-        await session.Start();capture=session;if(replay)gameKeys.Start(hwnd);
+        await session.Start();capture=session;ResetAutoSave();if(replay)gameKeys.Start(hwnd);
     }
     async Task StopCapture()
     {
-        var old=capture;if(old==null)return;gameKeys.Stop();capture=null;gamePid=0;
-        Message("Finishing recording…");string? saved=await old.Stop();
+        var old=capture;if(old==null)return;
+        await SaveAutoReplay(force:true);
+        bool keep=old.Replay && autoReplay.Pending;
+        gameKeys.Stop();capture=null;gamePid=0;ResetAutoSave();
+        Message("Finishing recording…");string? saved=await old.Stop(keep);
+        if(keep){Home.Log("Unsaved auto-replay retained in "+old.Folder);Message("Auto-save failed. Replay source retained in "+old.Folder,true);return;}
         Message(saved==null?"Replay buffer stopped":"Recording saved · "+Path.GetFileName(saved)+old.AudioWarning,saved!=null);
         if(page==1)LoadLibrary();
     }
@@ -158,7 +163,8 @@ public partial class MainWindow : Window
         Targets.IsEnabled=ModePanel.IsEnabled=RegionRow.IsEnabled=RefreshTargets.IsEnabled=c?.Replay!=false;
         SaveReplayButton.IsEnabled=c?.Replay==true;
         ReplayTitle.Text=c?.Replay==true?"Buffer active · "+c.Label:cfg.Games.Count==0?"Add your first game":cfg.Auto?"Waiting for a game":"Auto capture is off";
-        ReplayHint.Text=$"Last {cfg.Minutes} min   ·   "+(hotkeyOk?cfg.Hotkey:"shortcut unavailable")+$"   ·   Games: {cfg.Games.Count}";
+        RefreshAutoSaveStatus();
+        ReplayHint.Text=$"Last {c?.Minutes??cfg.Minutes} min   ·   "+(hotkeyOk?cfg.Hotkey:"shortcut unavailable")+$"   ·   Games: {cfg.Games.Count}";
     }
     void NavClick(object s,RoutedEventArgs e)=>ShowPage(int.Parse((string)((Button)s).Tag));
     void GamesClick(object s,RoutedEventArgs e)=>ShowPage(2);
@@ -204,31 +210,7 @@ public partial class MainWindow : Window
     void RemoveGame(object s,RoutedEventArgs e){if(GameList.SelectedItem is string file){cfg.Games.Remove(file);cfg.Save();RefreshGames();UpdateState();}}
     void OpenFolder(object s,RoutedEventArgs e)=>Process.Start(new ProcessStartInfo(Home.Videos){UseShellExecute=true});
     void SearchChanged(object s,TextChangedEventArgs e){if(initialized && page==1)LoadLibrary();}
-    async void LoadLibrary()
-    {
-        int gen=++libraryGeneration;ClipList.Children.Clear();var filter=Search.Text.Trim();
-        var files=new DirectoryInfo(Home.Videos).EnumerateFiles("*",SearchOption.AllDirectories)
-            .Where(f=>new[]{".mp4",".mkv",".webm"}.Contains(f.Extension.ToLowerInvariant()) && f.Name.Contains(filter,StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(f=>f.CreationTimeUtc).ToArray();
-        LibraryCount.Text=files.Length==0?(filter.Length>0?"No matches":"No recordings yet. Your recordings and exports will appear here."):$"Recordings: {files.Length}   ·   Newest first   ·   Search by name or date";
-        DateTime day=DateTime.MinValue;List<(Image,FileInfo)> thumbs=[];
-        foreach(var f in files){
-            if(day!=f.CreationTime.Date){day=f.CreationTime.Date;ClipList.Children.Add(new TextBlock{Text=day.ToString("MMM d, yyyy",System.Globalization.CultureInfo.GetCultureInfo("en-US")),Style=(Style)FindResource("Kicker"),Margin=new Thickness(0,16,0,7)});}
-            var btn=new Button{HorizontalContentAlignment=HorizontalAlignment.Stretch,Margin=new Thickness(0,0,0,6),Padding=new Thickness(8),ToolTip=f.Name};
-            var grid=new Grid();grid.ColumnDefinitions.Add(new(){Width=new GridLength(105)});grid.ColumnDefinitions.Add(new());grid.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
-            var img=new Image{Width=96,Height=54,Stretch=Stretch.UniformToFill};var frame=new Border{Background=BrushOf("#12171C"),Child=img,CornerRadius=new CornerRadius(3),HorizontalAlignment=HorizontalAlignment.Left};grid.Children.Add(frame);thumbs.Add((img,f));
-            var words=new StackPanel{VerticalAlignment=VerticalAlignment.Center};Grid.SetColumn(words,1);grid.Children.Add(words);
-            words.Children.Add(new TextBlock{Text=Home.ClipTitle(f.Name),TextTrimming=TextTrimming.CharacterEllipsis,FontWeight=FontWeights.SemiBold});words.Children.Add(new TextBlock{Text=$"{f.CreationTime:HH:mm}   ·   {f.Extension[1..].ToUpperInvariant()}   ·   {f.Length/1048576d:0.#} MB",Style=(Style)FindResource("Sub")});
-            var open=new TextBlock{Text="Edit  ›",Margin=new Thickness(10,0,5,0)};Grid.SetColumn(open,2);grid.Children.Add(open);btn.Content=grid;
-            btn.Click+=(_,_)=>{new Editor(f.FullName){Owner=this}.ShowDialog();LoadLibrary();};ClipList.Children.Add(btn);
-        }
-        foreach(var (img,f) in thumbs){
-            if(gen!=libraryGeneration || page!=1 || quitting)return;
-            try{
-                img.Source=await Media.Thumbnail(f);
-            }catch(Exception ex){Home.Log("Thumbnail: "+ex.Message);}
-        }
-    }
+
 }
 internal sealed class RegionPicker : Forms.Form
 {
@@ -248,4 +230,5 @@ internal sealed class RegionPicker : Forms.Form
         using var font=new System.Drawing.Font("Segoe UI",16);e.Graphics.DrawString(hint,font,System.Drawing.Brushes.White,20,20);
     }
 }
+
 

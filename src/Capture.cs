@@ -92,7 +92,9 @@ internal sealed class Capture
         foreach(var f in files.Take(remove))File.Delete(f);
         if(remove>0)apps?.PruneBefore(int.Parse(Path.GetFileNameWithoutExtension(files[remove])));
     }
-    public async Task<string> SaveReplay()
+    public async Task<string> SaveReplay()=>(await SaveReplayDetails()).File;
+    public sealed record ReplayResult(string File,double Start,double Duration);
+    public async Task<ReplayResult> SaveReplayDetails(string? title=null)
     {
         if(!Replay)throw new InvalidOperationException();
         var files=Segments().TakeLast(Minutes*60/Segment+1).ToArray();
@@ -106,7 +108,7 @@ internal sealed class Capture
         double end=(files.Length-1)*Segment+tail, length=Math.Min(end,Minutes*60);
         if(length<.05)throw new IOException("The replay buffer is filling up.");
         if(Home.Free<files.Sum(f=>new FileInfo(f).Length)+96_000_000)throw new IOException("There is not enough disk space to save the replay.");
-        string dest=Home.Unique(Home.Videos,Label+" · replay","mp4");
+        string dest=Home.Unique(Home.Videos,Label+" · "+(title??"replay"),"mp4");
         string tmp=Path.Combine(Folder,"save.mp4"),list=Path.Combine(Folder,"save.ffconcat");
         // All list entries are private, generated numeric basenames.
         File.WriteAllLines(list,files.Select(f=>"file '"+Path.GetFileName(f)+"'"+Environment.NewLine+"duration "+Segment),new UTF8Encoding(false));
@@ -114,7 +116,7 @@ internal sealed class Capture
             string[] video=["-f","concat","-safe","1","-ss",Home.N(end-length),"-i",list];
             if(apps==null)await Media.Remux(video,tmp,duration:length);
             else await apps.Mux(video,tmp,int.Parse(Path.GetFileNameWithoutExtension(files[0]))*Segment+end-length,length);
-            File.Move(tmp,dest);return dest;
+            File.Move(tmp,dest);return new(dest,int.Parse(Path.GetFileNameWithoutExtension(files[0]))*Segment+end-length,length);
         }
         finally{File.Delete(tmp);File.Delete(list);}
     }
@@ -129,11 +131,11 @@ internal sealed class Capture
         }
         if(audio!=null){var a=audio;audio=null;await Task.Run(a.Dispose);}
     }
-    public async Task<string?> Stop()
+    public async Task<string?> Stop(bool preserveReplay=false)
     {
         await EndProcess();Clock.Stop();
         string raw=Path.Combine(Folder,"take.mkv");
-        if(Replay || !File.Exists(raw)||new FileInfo(raw).Length==0){Home.Clear(Folder);return null;}
+        if(Replay || !File.Exists(raw)||new FileInfo(raw).Length==0){if(!Replay || !preserveReplay)Home.Clear(Folder);return null;}
         string dest=Home.Unique(Home.Videos,Label,"mp4");
         string tmp=Path.Combine(Folder,"final.mp4");
         try{
