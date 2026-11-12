@@ -34,6 +34,7 @@
    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"><StackPanel Margin="0,0,3,0">
     <TextBlock Text="CLIP SETTINGS" Style="{StaticResource Section}"/><TextBlock Text="Export name" Style="{StaticResource Field}"/><TextBox x:Name="OutputName" MaxLength="80"/>
     <TextBlock Text="Format" Style="{StaticResource Field}"/><ComboBox x:Name="FormatBox"/><TextBlock x:Name="ResultLength" TextWrapping="Wrap" Foreground="#B6C8DD" Margin="0,9,0,0" FontSize="12"/>
+    <StackPanel x:Name="GameEventsSection" Visibility="Collapsed"><Border Style="{StaticResource Rule}"/><TextBlock Text="GAME EVENTS" Style="{StaticResource Section}"/><StackPanel x:Name="GameEventLinks" Margin="0,8,0,0"/></StackPanel>
     <Border Style="{StaticResource Rule}"/><TextBlock Text="CUTS" Style="{StaticResource Section}"/><TextBlock x:Name="CutHint" Style="{StaticResource Field}" Text="Set markers A and B to select a range."/>
     <ListBox x:Name="CutList" MaxHeight="106" BorderThickness="0" Visibility="Collapsed"/><Button x:Name="RestoreCut" Content="Restore selected cut" Style="{StaticResource Tool}" Margin="0,6,0,0" Click="UndoCut" Visibility="Collapsed"/>
     <Border Style="{StaticResource Rule}"/><TextBlock Text="FILE DETAILS" Style="{StaticResource Section}"/><TextBlock Text="Created" Style="{StaticResource Field}"/><TextBlock x:Name="CreatedText" FontSize="13"/>
@@ -46,3 +47,4 @@
  <TextBlock x:Name="Feedback" Grid.Row="2" Foreground="#95A4B5" FontSize="11" Margin="14,0" Text="Preparing preview…" TextTrimming="CharacterEllipsis"/>
  </Grid>
 </Window>
+

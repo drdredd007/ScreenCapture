@@ -63,6 +63,11 @@ public partial class Editor
         Block(left,right-left,selected);
         foreach(var r in cuts)Block(X(r.Start),X(r.End)-X(r.Start),cut);
         for(int i=1;i<10;i++)Block(w*i/10,1,Tint(172,191,204,85),h-5,5);
+        foreach(var marker in gameEvents.Where(m=>double.IsFinite(m.Seconds) && m.Seconds>=0 && m.Seconds<info.Duration)){
+            var pin=new Border{Width=7,Height=8,Background=Tint(183,245,155),CornerRadius=new CornerRadius(2),ToolTip=Home.Time(marker.Seconds)+" · "+marker.Label,Cursor=Cursors.Hand};
+            Canvas.SetLeft(pin,Math.Clamp(X(marker.Seconds)-3,0,Math.Max(0,w-7)));Canvas.SetTop(pin,2);
+            pin.MouseLeftButtonDown+=(_,e)=>{if(ready){Pause();Seek(marker.Seconds);}e.Handled=true;};CutBar.Children.Add(pin);
+        }
         Block(left,right-left,teal,0,1);Block(left,right-left,teal,h-1,1);
         Block(Math.Min(w-3,left),3,teal);Block(Math.Clamp(right-3,0,w),3,teal);
         if(right-left>=44){
@@ -71,6 +76,14 @@ public partial class Editor
             Canvas.SetLeft(first,left+7);Canvas.SetTop(first,7);Canvas.SetLeft(last,right-15);Canvas.SetTop(last,7);
             CutBar.Children.Add(first);CutBar.Children.Add(last);
         }
+    }
+    void LoadGameEvents(){
+        GameEventLinks.Children.Clear();
+        foreach(var marker in gameEvents.Where(m=>double.IsFinite(m.Seconds) && m.Seconds>=0 && m.Seconds<(info?.Duration??0))){
+            var button=new Button{Content=Home.Time(marker.Seconds)+"   "+marker.Label,HorizontalContentAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,0,0,4),FontSize=12,ToolTip="Jump to this game event"};
+            button.Click+=(_,_)=>{if(ready){Pause();Seek(marker.Seconds);}};GameEventLinks.Children.Add(button);
+        }
+        GameEventsSection.Visibility=GameEventLinks.Children.Count>0?Visibility.Visible:Visibility.Collapsed;
     }
     DragTarget Hit(double x)
     {
@@ -99,4 +112,5 @@ public partial class Editor
         Seek(pos);if(dragging!=DragTarget.Playhead)RefreshCuts();
     }
 }
+
 

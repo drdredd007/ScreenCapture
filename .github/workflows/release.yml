@@ -2,7 +2,7 @@ name: Windows build and release
 
 on:
   push:
-    branches: [main, codex/fix-audio-continuity]
+    branches: [main, codex/auto-replays-library]
   workflow_dispatch:
 
 permissions:
@@ -46,12 +46,26 @@ jobs:
         run: |
           dotnet run --project tests/audio-continuity/AudioContinuityTests.csproj -c Release -p:NuGetAudit=false
           if ($LASTEXITCODE) { throw 'Audio continuity tests failed' }
+      - name: LoL auto-save regression tests
+        run: |
+          dotnet run --project tests/autosave/AutoSaveTests.csproj -c Release -p:NuGetAudit=false
+          if ($LASTEXITCODE) { throw 'Auto-save tests failed' }
       - name: Build Windows application
         run: ./build.ps1
       - name: Compile Windows integration tests
         run: |
           dotnet build tests/montage/MontageTests.csproj -c Release --configfile NuGet.Config -p:NuGetAudit=false
           if ($LASTEXITCODE) { throw 'Windows integration test build failed' }
+      - name: Library and auto-save settings UI tests
+        run: ./tests/features.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: feature-ui-checks
+          path: |
+            build/*.png
+            build/*verification.txt
+          if-no-files-found: ignore
       - name: Package Windows x64
         id: package
         run: |
@@ -70,11 +84,11 @@ jobs:
           @"
           Moments $version for Windows 11 x64.
 
-          Fixes audio packet overlap when WASAPI reports invalid timestamps, smooths packet timestamp jitter, and separates audio capture from a temporarily stalled video encoder.
+          Adds League of Legends auto-save with selectable events: save the last 5 or 10 minutes 30 seconds after the last selected event. New events extend the countdown; long fights are saved before the earliest event expires. Includes clip event markers and persistent List / Tiles views in Library.
 
           Download **$zip**, extract the whole archive to a writable folder, and run **Moments.exe**. FFmpeg and FFprobe are included. Requires **.NET Desktop Runtime 10 x64**.
 
-          Validation: Windows Release build, deterministic PCM continuity and encoder-backpressure tests. Live device capture and listening tests still require a Windows PC with audio devices.
+          Validation: Windows Release build, audio regression tests, LoL parser/scheduler tests and WPF settings/library UI tests. Live LoL event delivery and audio-device capture still require a real game session on a Windows PC.
 
           Source commit: $env:GITHUB_SHA
           SHA-256: $hash

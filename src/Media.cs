@@ -18,14 +18,14 @@ internal static class Media
     }
     public static async Task<System.Windows.Media.Imaging.BitmapImage> Thumbnail(FileInfo file,CancellationToken ct=default)
     {
-        string key=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes("color2"+file.FullName+file.Length+file.LastWriteTimeUtc.Ticks)));
+        string key=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes("color3"+file.FullName+file.Length+file.LastWriteTimeUtc.Ticks)));
         string cache=Path.Combine(Home.Work,"thumbs");Directory.CreateDirectory(cache);
         string path=Path.Combine(cache,key+".jpg");
         if(!File.Exists(path)){
             string tmp=Path.Combine(cache,Guid.NewGuid().ToString("N")+".jpg");
             try{
                 var info=await Probe(file.FullName,ct);
-                string filter=(info.LegacyRgbTags?DesktopYuv+",":"")+"scale=192:-2";
+                string filter=(info.LegacyRgbTags?DesktopYuv+",":"")+"scale=480:-2";
                 await Proc.Run("ffmpeg",["-v","error","-y","-i",file.FullName,"-frames:v","1","-vf",filter,"-q:v","5",tmp],ct);
                 try{File.Move(tmp,path);}catch(IOException) when(File.Exists(path)){}
             }finally{File.Delete(tmp);}
@@ -135,4 +135,5 @@ internal static class Media
         return (output,peaks);
     }
 }
+
 

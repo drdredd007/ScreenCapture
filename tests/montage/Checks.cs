@@ -28,6 +28,7 @@ public sealed class MontageChecks : Application
     protected override async void OnStartup(StartupEventArgs args){
         report=args.Args[0];File.WriteAllText(report,"");Home.Init();Theme.Install();
         try{
+            if(args.Args.Length>1 && args.Args[1]=="features"){await FeatureUiChecks.Run(Note,Path.GetDirectoryName(report)!);Note("PASS");Shutdown(0);return;}
             if(args.Args.Length>1 && args.Args[1]=="apps"){await AppAudioChecks.Run(Note);Note("PASS");Shutdown(0);return;}
             if(args.Args.Length>1 && args.Args[1]=="colors"){await DesktopColors();Note("PASS");Shutdown(0);return;}
             string a=Path.Combine(Home.Videos,"01 · Спектр.mp4"),b=Path.Combine(Home.Videos,"02 · Орбита.mp4");
@@ -245,3 +246,4 @@ public sealed class MontageChecks : Application
         }finally{media.Close();await surface.ClearVideo();w.Close();}
     }
 }
+
