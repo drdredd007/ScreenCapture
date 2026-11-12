@@ -2,7 +2,7 @@ name: Windows build and release
 
 on:
   push:
-    branches: [main, codex/one-click-updates]
+    branches: [main, codex/independent-editing-projects]
   workflow_dispatch:
 
 permissions:
@@ -92,13 +92,17 @@ jobs:
           @"
           Moments $version for Windows 11 x64.
 
-          Adds Settings → Updates → Update and restart. The app downloads and verifies the release, prepares it outside the installation folder, exits, replaces program files, and restarts automatically. The updater backs up existing program files and rolls back if replacement or application startup fails. Recordings and settings are preserved. Stop recording/replay capture and close editors before installing.
+          Clip previews and the montage editor now open as independent, nonmodal windows. Add A–B to timeline appends the kept selection and enabled audio tracks to the current montage; Add source reuses that same montage. Existing edits are preserved and each send can be undone in one step.
 
-          Versions up to 1.1.3 need one final manual extraction to obtain this installer. Starting with 1.1.4, subsequent compatible releases install with the button. Installation requires a writable application folder; no administrator elevation is requested.
+          New project, Open project and Save project as store separate .moments projects, autosave edits in the active project, and reopen the last project. New projects preserve previous montages. Source videos remain separate files referenced by the project.
+
+          Library list and tiles now show saved event types (Kill, Double kill, Triple kill, etc.) with repeated-event counts. Version 1.1.4 users can install this release with Settings → Updates → Update and restart.
+
+          Audio preview uses decoded PCM WAV instead of the Windows AAC decoder. New multi-track files include a default AAC-LC stereo playback mix while retaining separate editable stems. Existing files can be re-exported for compatibility.
 
           Download **$zip**, extract the whole archive to a writable folder, and run **Moments.exe**. FFmpeg and FFprobe are included. Requires **.NET Desktop Runtime 10 x64**.
 
-          Validation: Windows Release builds, package path/duplicate/integrity checks, cancellation, locked-file and failed-startup rollback, real updater process handoff and restart, WPF update workflow and capture/editor guards, plus existing audio, LoL, A/V sync, live cadence and download checks.
+          Validation: Windows builds; independent-window/input/lifecycle checks; A–B range, audio selection, mixed-FPS, undo/redo, queued-send and project-switch tests; decoded selection export; project persistence and library event-badge UI checks; silent-first-track/default-mix/PCM-preview checks; update/restart/rollback and existing audio, LoL, sync and cadence regressions.
 
           Source commit: $env:GITHUB_SHA
           SHA-256: $hash

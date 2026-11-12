@@ -56,6 +56,9 @@ static class Tests
         var delayed=new AutoReplay();delayed.Add(Mark("late",100,140));Check(delayed.DueAt(5)==170,"delay must start on detection");
     }
     static void MetadataAndLayout(){
+        var tags=LibraryLayout.EventTags(new ClipEvents("League of Legends",[new("My kills",0,0),new("My kills",1,1),new("Double kill",2,2),new("Triple kill",3,3),new("",4,4)]));
+        Check(tags.Select(t=>t.Label).SequenceEqual(new[]{"Kill","Double kill","Triple kill"}) && tags[0].Count==2,"event badges/counts or legacy labels");
+        Check(LibraryLayout.EventTags(null).Length==0 && LibraryLayout.EventTags(new ClipEvents("LoL",[])).Length==0,"ordinary recording received invented event tags");
         string folder=Path.Combine(Path.GetTempPath(),"moments_autosave_"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(folder);
         try{
             string file=Path.Combine(folder,"clip.mp4");

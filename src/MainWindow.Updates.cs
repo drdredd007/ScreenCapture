@@ -13,7 +13,7 @@ public partial class MainWindow
     void InitializeUpdates(){InstalledVersion.Text="Installed version  "+UpdateService.Current;}
     void UpdateButtons(bool busy){
         CheckUpdateButton.IsEnabled=!busy && !updateHandedOff;
-        DownloadUpdateButton.IsEnabled=!busy && !updateHandedOff && capture==null && gate.CurrentCount!=0 && OwnedWindows.Count==0 && availableUpdate?.Version>UpdateService.Current;
+        DownloadUpdateButton.IsEnabled=!busy && !updateHandedOff && capture==null && gate.CurrentCount!=0 && !Editing.HasWindows && OwnedWindows.Count==0 && availableUpdate?.Version>UpdateService.Current;
         DownloadUpdateButton.ToolTip=capture!=null?"Stop recording or turn off the replay buffer before updating.":"Download, install and restart Moments";
         CancelUpdateButton.Visibility=busy && !updateHandedOff?Visibility.Visible:Visibility.Collapsed;
         OpenUpdateButton.Visibility=downloadedUpdate!=null?Visibility.Visible:Visibility.Collapsed;
@@ -35,7 +35,7 @@ public partial class MainWindow
     }
     async void DownloadUpdateClick(object sender,RoutedEventArgs e){
         if(updateCancel!=null || availableUpdate==null || availableUpdate.Version<=UpdateService.Current || quitting || updateHandedOff)return;
-        if(capture!=null || OwnedWindows.Count!=0 || !await gate.WaitAsync(0)){
+        if(capture!=null || Editing.HasWindows || OwnedWindows.Count!=0 || !await gate.WaitAsync(0)){
             UpdateStatus.Text="Finish recording, turn off the replay buffer and close the editor before installing an update.";return;
         }
         installingUpdate=true;

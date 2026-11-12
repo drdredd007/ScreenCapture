@@ -11,7 +11,6 @@ public partial class AssemblyWindow : Window
     sealed record BinFile(string File,string Title,string Detail,BitmapImage? Thumb);
     static readonly HashSet<string> extensions=new(StringComparer.OrdinalIgnoreCase){".mp4",".mkv",".webm",".mov",".avi",".m4v",".mts",".m2ts"};
     internal static bool IsVideo(string path)=>extensions.Contains(Path.GetExtension(path));
-    readonly string draft=Path.Combine(Home.Root,"Projects","current.json");
     readonly string folder=Home.Temp("view");
     readonly CancellationTokenSource life=new();
     readonly ObservableCollection<BinFile> library=[];
@@ -19,7 +18,13 @@ public partial class AssemblyWindow : Window
     readonly List<Sequence> history=[],future=[];
     Sequence edit=new();
     Guid? selected;int lane=1,frame;
-    bool loaded,closing,canClose,adding;
+    bool loaded,closing,canClose;
+    readonly TaskCompletionSource<bool> initialized=new(TaskCreationOptions.RunContinuationsAsynchronously);
+    readonly SemaphoreSlim addGate=new(1,1);
+    readonly HashSet<Task> additions=[];
+    internal bool IsClosing=>closing;
+    internal Task<bool> Ready=>initialized.Task;
+    internal event Action? Exported;
     Task? libraryWork,exportWork;
     CancellationTokenSource? exportCancel;
     Point binAnchor;string? dragFile;int libraryVersion;
@@ -30,10 +35,11 @@ public partial class AssemblyWindow : Window
         Monitor.Failed+=err=>{if(!closing){Pause();Say("Preview: "+err);}};
         Loaded+=async (_,_)=>{
             try{
-                edit=Sequence.Load(draft);loaded=true;ProjectName.Text=edit.Title;
-                Refresh();ReloadBin();Say("S to split · Space to play · Ctrl+Z to undo");
+                edit=projects.Load();loaded=true;ProjectName.Text=edit.Title;
+                Refresh();ReloadBin();ProjectLabel();Say("S to split · Space to play · Ctrl+Z to undo");
+                initialized.TrySetResult(true);
                 if(firstFile!=null)await AddFiles([firstFile],1,edit.End);
-            }catch(Exception ex){Say(ex.Message);if(!loaded){TimelineCanvas.IsEnabled=false;Say("Could not open the draft. "+ex.Message);}}
+            }catch(Exception ex){initialized.TrySetResult(false);Say(ex.Message);if(!loaded){TimelineCanvas.IsEnabled=false;Say("Could not open the draft. "+ex.Message);}}
         };
         Closing+=ClosingWindow;PreviewKeyDown+=OnKey;timer.Tick+=PlaybackTick;
         Activated+=(_,_) => (Application.Current.MainWindow as MainWindow)?.GiveSplitKeyToEditor(true);
@@ -48,12 +54,13 @@ public partial class AssemblyWindow : Window
     bool Commit(Sequence next,string text)
     {
         if(ReferenceEquals(next,edit)||!loaded)return false;
-        try{next.Save(draft);}catch(Exception ex){Say("Could not save the draft. "+ex.Message);return false;}
+        try{projects.Save(next);}catch(Exception ex){Say("Could not save the project. "+ex.Message);return false;}
         Pause();history.Add(edit);if(history.Count>80)history.RemoveAt(0);future.Clear();
         bool binChanged=next.Imports!=edit.Imports;edit=next;Refresh();if(binChanged)ReloadBin();Say(text);return true;
     }
     void Refresh()
     {
+        Title="Moments · "+edit.Title+" · Video Editor";ProjectLabel();
         frame=Math.Clamp(frame,0,edit.End);if(!edit.Lanes().Contains(lane))lane=1;
         if(!edit.Clips.Any(c=>c.Id==selected))selected=null;
         FormatInfo.Text=edit.End==0?"":$"{edit.Width} × {edit.Height}   ·   {edit.Fps} FPS";
@@ -67,7 +74,7 @@ public partial class AssemblyWindow : Window
     void RestoreHistory(List<Sequence> from,List<Sequence> to)
     {
         if(from.Count==0)return;
-        var next=from[^1];try{next.Save(draft);}catch(Exception ex){Say(ex.Message);return;}
+        var next=from[^1];try{projects.Save(next);}catch(Exception ex){Say(ex.Message);return;}
         Pause();from.RemoveAt(from.Count-1);to.Add(edit);
         bool binChanged=edit.Imports!=next.Imports;edit=next;Refresh();if(binChanged)ReloadBin();Say("Draft saved.");
     }
@@ -130,12 +137,20 @@ public partial class AssemblyWindow : Window
     void BinDoubleClick(object s,MouseButtonEventArgs e){if(e.ChangedButton==MouseButton.Left)AppendClick(s,e);}
     async Task AddFiles(string[] files,int target,double position,double snapRadius=0)
     {
-        if(adding || !loaded)return;adding=true;
+        if(!loaded || closing)return;
+        var job=AddFilesCore(files,target,position,snapRadius);additions.Add(job);
+        try{await job;}finally{additions.Remove(job);}
+    }
+    async Task AddFilesCore(string[] files,int target,double position,double snapRadius)
+    {
+        bool entered=false;int revision=projectRevision;
         try{
+            await addGate.WaitAsync(life.Token);entered=true;
             var paths=files.Where(IsVideo).Select(Path.GetFullPath).ToArray();
             if(paths.Length==0){Say("Choose a video file.");return;}
             var media=new List<ClipInfo>();foreach(string p in paths)media.Add(await Probe(p));
             if(closing)return;
+            if(revision!=projectRevision)throw new IOException("The active project changed. Send the clip again to add it to this project.");
             var next=edit;TimelineClip? first=null;
             int cursor=edit.DropStart(target,position,media.Sum(m=>Math.Max(1,edit.Frame(m.Duration))),snapRadius,out _);
             for(int i=0;i<paths.Length;i++){
@@ -147,7 +162,37 @@ public partial class AssemblyWindow : Window
             if(Commit(next,"Clip added. Drag an edge to trim or the center to move. Hold Alt to bypass snapping.")){
                 selected=first!.Id;lane=target;DrawTimeline();
             }
-        }catch(OperationCanceledException){}catch(Exception ex){Say(ex.Message);}finally{adding=false;}
+        }catch(OperationCanceledException){}catch(Exception ex){Say(ex.Message);}finally{if(entered)addGate.Release();}
+    }
+    internal async Task AppendSource(string file,Interval[]? ranges=null,int[]? streams=null){
+        if(closing)throw new OperationCanceledException("The video editor is closing.");
+        // Snapshot the send request before probing; subsequent source edits must
+        // not change the selected range or tracks already queued for insertion.
+        var job=AppendSourceCore(Path.GetFullPath(file),ranges?.ToArray(),streams?.ToArray());additions.Add(job);
+        try{await job;}finally{additions.Remove(job);}
+    }
+    async Task AppendSourceCore(string file,Interval[]? ranges,int[]? streams){
+        var token=life.Token;int revision=projectRevision;
+        await initialized.Task.WaitAsync(token);
+        if(!loaded)throw new IOException("Could not open the current montage project.");
+        await addGate.WaitAsync(token);
+        try{
+            var media=await Probe(file);token.ThrowIfCancellationRequested();
+            if(revision!=projectRevision)throw new IOException("The active project changed. Send the selection again to add it to this project.");
+            if(streams!=null)media=media with{Tracks=media.Tracks.Where(t=>streams.Contains(t.Index)).ToList()};
+            var selectedRanges=ranges??[new Interval(0,media.Duration)];
+            if(selectedRanges.Length==0)throw new ArgumentException("The selected range contains no kept frames.");
+            // Read the current sequence after awaiting, not a stale snapshot.
+            // A batch from A–B (possibly separated by cuts) is one undo step.
+            var next=edit;TimelineClip? first=null;
+            foreach(var range in selectedRanges){int count=next.Clips.Length;next=next.Add(file,media,1,next.End,range);first??=next.Clips[count];}
+            if(!file.StartsWith(Home.Videos+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase) && !next.Imports.Contains(file,StringComparer.OrdinalIgnoreCase))
+                next=next with{Imports=[..next.Imports,file]};
+            CancelDrag();
+            if(!Commit(next,ranges==null?"Source appended to the montage.":"Selected range appended to the montage. Ctrl+Z to undo."))
+                throw new IOException("Could not save the montage draft. The selection was not added.");
+            selected=first!.Id;lane=1;DrawTimeline();
+        }finally{addGate.Release();}
     }
     void SplitAt(int target,int at)
     {
@@ -183,7 +228,7 @@ public partial class AssemblyWindow : Window
         Pause();var snapshot=edit;exportCancel=CancellationTokenSource.CreateLinkedTokenSource(life.Token);ExportButton.Content="Cancel export";
         var job=SequenceRender.Export(snapshot,((string)Format.SelectedItem).ToLowerInvariant(),(i,n)=>Say($"Exporting   ·   segment {i} of {n}"),exportCancel.Token);
         exportWork=job;
-        try{var path=await job;Say("Saved to library · "+Path.GetFileName(path));if(!closing)ReloadBin();}
+        try{var path=await job;Say("Saved to library · "+Path.GetFileName(path));if(!closing){ReloadBin();Exported?.Invoke();}}
         catch(OperationCanceledException){Say("Export canceled.");}catch(Exception ex){Say(ex.Message);Home.Log(ex.ToString());}
         finally{exportWork=null;exportCancel.Dispose();exportCancel=null;ExportButton.Content="Export";ExportButton.IsEnabled=edit.End>0;}
     }
@@ -191,8 +236,9 @@ public partial class AssemblyWindow : Window
         if(canClose)return;e.Cancel=true;if(closing)return;closing=true;
         if(loaded && ProjectName.IsKeyboardFocusWithin)NameChanged(ProjectName,null!);
         life.Cancel();Pause();timer.Stop();ClosePlayers();
-        var jobs=warmJobs.Values.Cast<Task>().Concat(probes.Values).Append(Monitor.ClearVideo()).Append(libraryWork??Task.CompletedTask).Append(exportWork??Task.CompletedTask);
+        var jobs=warmJobs.Values.Cast<Task>().Concat(probes.Values).Concat(additions).Append(Monitor.ClearVideo()).Append(libraryWork??Task.CompletedTask).Append(exportWork??Task.CompletedTask);
         try{await Task.WhenAll(jobs.ToArray());}catch(Exception){}
         Home.Clear(folder);life.Dispose();canClose=true;_=Dispatcher.BeginInvoke(Close);
     }
 }
+

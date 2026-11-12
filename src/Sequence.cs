@@ -33,7 +33,7 @@ internal sealed record Sequence
         var time=TimeSpan.FromSeconds(frame/Fps);
         return $"{(int)time.TotalHours:00}:{time.Minutes:00}:{time.Seconds:00}:{frame%Fps:00}";
     }
-    public Sequence Add(string path,ClipInfo media,int lane,int position)
+    public Sequence Add(string path,ClipInfo media,int lane,int position,Interval? sourceRange=null)
     {
         if(lane==0 || lane>VideoLanes || -lane>AudioLanes)throw new ArgumentException("Choose an existing track.");
         var sequence=this;
@@ -42,7 +42,14 @@ internal sealed record Sequence
             sequence=this with {Fps=fps,Width=Math.Max(2,media.Width/2*2),Height=Math.Max(2,media.Height/2*2)};
             position=sequence.Frame((double)position/Fps);
         }
-        int length=Math.Max(1,sequence.Frame(media.Duration));
+        int sourceLength=Math.Max(1,sequence.Frame(media.Duration)),sourceIn=0,length=sourceLength;
+        if(sourceRange is Interval range){
+            if(!double.IsFinite(range.Start)||!double.IsFinite(range.End)||range.Start<0||range.End>media.Duration||range.End<=range.Start)
+                throw new ArgumentException("Choose a valid source range.");
+            sourceIn=Math.Clamp(sequence.Frame(range.Start),0,sourceLength);
+            int end=Math.Clamp(sequence.Frame(range.End),0,sourceLength);length=end-sourceIn;
+            if(length<1)throw new ArgumentException("Select at least one project frame.");
+        }
         int FreeStart(int track,int start){
             foreach(var c in Clips.Where(c=>c.Lane==track).OrderBy(c=>c.Start)){
                 if(c.End<=start)continue;
@@ -53,7 +60,7 @@ internal sealed record Sequence
         }
         position=FreeStart(lane,Math.Max(0,position));
         var add=new List<TimelineClip>();Guid link=Guid.NewGuid();int audioCount=AudioLanes;
-        void AddStream(int target,int stream,string? name=null)=>add.Add(new(Guid.NewGuid(),link,path,target,stream,position,0,length,length,name));
+        void AddStream(int target,int stream,string? name=null)=>add.Add(new(Guid.NewGuid(),link,path,target,stream,position,sourceIn,length,sourceLength,name));
         if(lane>0)AddStream(lane,-1);
         if(lane<0 && media.Tracks.Count==0)throw new InvalidOperationException("This file has no audio tracks.");
         int audioLane=lane>0?-1:lane;
@@ -210,3 +217,4 @@ internal sealed record Sequence
         string tmp=file+".tmp";System.IO.File.WriteAllText(tmp,JsonSerializer.Serialize(this));System.IO.File.Move(tmp,file,true);
     }
 }
+

@@ -10,6 +10,7 @@ internal readonly record struct Interval(double Start,double End)
 }
 internal static class Media
 {
+    internal const string PlaybackMix="Moments playback mix (v1)";
     internal const string DesktopYuv="setparams=range=limited:colorspace=bt470bg:color_primaries=bt709:color_trc=iec61966-2-1";
     static bool HasOldCaptureTags(JsonElement stream){
         string? Tag(string key)=>stream.TryGetProperty(key,out var val)?val.GetString():null;
@@ -48,6 +49,8 @@ internal static class Media
             }
             tracks.Add(new(s.GetProperty("index").GetInt32(),name,s.GetProperty("codec_name").GetString()??""));
         }
+        // This compatibility track duplicates the editable stems. Never mix it again in the editor.
+        if(tracks.Count>1)tracks.RemoveAll(t=>t.Name==PlaybackMix);
         var rate=(v.GetProperty("r_frame_rate").GetString()??"").Split('/');
         double fps=rate.Length==2 && double.TryParse(rate[0],CultureInfo.InvariantCulture,out double num) && double.TryParse(rate[1],CultureInfo.InvariantCulture,out double den) && den>0?num/den:0;
         return new(double.Parse(root.GetProperty("format").GetProperty("duration").GetString()!,CultureInfo.InvariantCulture),
@@ -71,12 +74,31 @@ internal static class Media
             source=Path.Combine(Path.GetDirectoryName(source)!,line[6..^1]);
         }
         var info=await Probe(source,ct);
-        List<string> args=["-v","error","-y",..inputs,"-map","0:v:0","-map","0:a?","-c","copy"];
+        List<string> args=["-v","error","-y",..inputs,"-map","0:v:0","-c:v","copy"];
         if(duration.HasValue)args.AddRange(["-t",Home.N(duration.Value)]);
-        if(encodePcm && info.Tracks.Count>0)args.AddRange(["-c:a",output.EndsWith(".webm")?"libopus":"aac","-b:a","160k"]);
-        AddTrackNames(args,info.Tracks);
-        if(output.EndsWith(".mp4"))args.AddRange(["-movflags","+faststart"]);
+        AddPlaybackAudio(args,info.Tracks.Select(t=>"0:"+t.Index).ToArray(),info.Tracks.Select(t=>t.Name).ToArray(),output.EndsWith(".webm",StringComparison.OrdinalIgnoreCase));
+        if(output.EndsWith(".mp4",StringComparison.OrdinalIgnoreCase))args.AddRange(["-movflags","+faststart"]);
         args.Add(output);await Proc.Run("ffmpeg",args,ct);
+    }
+    // General players select one audio stream. Put a complete stereo mix first,
+    // but retain each source stem for editing; Probe hides only our duplicate mix.
+    internal static void AddPlaybackAudio(List<string> args,IReadOnlyList<string> inputs,IReadOnlyList<string> names,bool webm=false)
+    {
+        if(inputs.Count==0)return;
+        int offset=inputs.Count>1?1:0;
+        if(offset!=0){
+            var graph=new List<string>();
+            for(int i=0;i<inputs.Count;i++)graph.Add($"[{inputs[i]}]aformat=sample_rates=48000:channel_layouts=stereo[mix{i}]");
+            graph.Add(string.Concat(Enumerable.Range(0,inputs.Count).Select(i=>$"[mix{i}]"))+
+                $"amix=inputs={inputs.Count}:duration=longest:normalize=0,alimiter=limit=0.95:level=false:latency=true[playback]");
+            args.AddRange(["-filter_complex",string.Join(";",graph),"-map","[playback]",
+                "-metadata:s:a:0","title="+PlaybackMix,"-metadata:s:a:0","handler_name="+PlaybackMix]);
+        }
+        foreach(var input in inputs)args.AddRange(["-map",input]);
+        args.AddRange(["-c:a",webm?"libopus":"aac","-b:a","192k","-ar:a","48000","-ac:a","2"]);
+        if(!webm)args.AddRange(["-profile:a","aac_low"]);
+        for(int i=0;i<inputs.Count;i++)args.AddRange([$"-metadata:s:a:{i+offset}","title="+names[i],$"-metadata:s:a:{i+offset}","handler_name="+names[i]]);
+        for(int i=0;i<inputs.Count+offset;i++)args.AddRange([$"-disposition:a:{i}",i==0?"default":"0"]);
     }
     static void AddTrackNames(List<string> args,IReadOnlyList<Track> tracks)
     {
@@ -109,10 +131,10 @@ internal static class Media
     }
     public static async Task<(string File,double[] Peaks)> PreviewAudio(string path,Track track,string folder,double duration,CancellationToken ct)
     {
-        var output=Path.Combine(folder,"track"+track.Index+".m4a");
+        var output=Path.Combine(folder,"track"+track.Index+".wav");
         string map="0:"+track.Index;
-        var si=Proc.Info("ffmpeg",["-v","error","-y","-i",path,"-map",map,"-c:a",track.Codec=="aac"?"copy":"aac",output,
-            "-map",map,"-c:a","pcm_s16le","-ac","1","-ar","8000","-f","s16le","pipe:1"]);
+        var si=Proc.Info("ffmpeg",["-v","error","-y","-i",path,"-map",map,"-af","aresample=48000:async=1:first_pts=0","-c:a","pcm_s16le","-ac","2","-ar","48000",output,
+            "-map",map,"-af","aresample=8000:async=1:first_pts=0","-c:a","pcm_s16le","-ac","1","-ar","8000","-f","s16le","pipe:1"]);
         using var process=Process.Start(si)??throw new IOException("Could not open the audio track.");
         ChildJob.Track(process);
         using var reg=ct.Register(()=>{try{process.Kill(true);}catch(InvalidOperationException){}});
