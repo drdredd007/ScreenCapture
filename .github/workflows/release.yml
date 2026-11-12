@@ -2,7 +2,7 @@ name: Windows build and release
 
 on:
   push:
-    branches: [main, codex/auto-replays-library]
+    branches: [main, codex/fix-av-sync]
   workflow_dispatch:
 
 permissions:
@@ -56,7 +56,7 @@ jobs:
         run: |
           dotnet build tests/montage/MontageTests.csproj -c Release --configfile NuGet.Config -p:NuGetAudit=false
           if ($LASTEXITCODE) { throw 'Windows integration test build failed' }
-      - name: Library and auto-save settings UI tests
+      - name: Library UI and decoded A/V synchronization tests
         run: ./tests/features.ps1
       - uses: actions/upload-artifact@v4
         if: always()
@@ -84,11 +84,11 @@ jobs:
           @"
           Moments $version for Windows 11 x64.
 
-          Adds League of Legends auto-save with selectable events: save the last 5 or 10 minutes 30 seconds after the last selected event. New events extend the countdown; long fights are saved before the earliest event expires. Includes clip event markers and persistent List / Tiles views in Library.
+          Fixes late audio caused by separate audio/video startup clocks. System audio, microphone, separate application stems, video and replay event markers now share a recording epoch. Includes the LoL auto-save and Library List / Tiles features from 1.1.0.
 
           Download **$zip**, extract the whole archive to a writable folder, and run **Moments.exe**. FFmpeg and FFprobe are included. Requires **.NET Desktop Runtime 10 x64**.
 
-          Validation: Windows Release build, audio regression tests, LoL parser/scheduler tests and WPF settings/library UI tests. Live LoL event delivery and audio-device capture still require a real game session on a Windows PC.
+          Validation: Windows Release build, audio regression tests, LoL parser/scheduler tests and WPF settings/library UI tests, and decoded flash/tone synchronization checks for recordings and replay exports. Live LoL event delivery and audio-device capture still require a real game session on a Windows PC.
 
           Source commit: $env:GITHUB_SHA
           SHA-256: $hash

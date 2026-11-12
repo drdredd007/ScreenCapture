@@ -7,7 +7,7 @@ internal sealed class Capture
     public readonly bool Replay;
     public readonly int Minutes;
     public readonly Target Source;
-    public readonly Stopwatch Clock=new();
+    public Stopwatch Clock {get;private set;}=new();
     readonly Profile profile;
     readonly bool system,mic,separateApps;
     AppAudioArchive? apps;
@@ -46,6 +46,7 @@ internal sealed class Capture
                 audio=new AudioFeed(system,mic,apps);await audio.Ready.WaitAsync(TimeSpan.FromSeconds(15));
                 args.AddRange(["-f","s16le","-ar","48000","-ac","4","-probesize","32","-analyzeduration","0","-i",audio.PathName]);
             }
+            var epoch=audio?.Epoch??new CaptureEpoch();Clock=epoch.Clock;
             var full=Source.Bounds;var area=Source.Region??full;
             double scale=Math.Min(1,Math.Min((double)profile.Width/area.Width,(double)profile.Height/area.Height));
             int w=Math.Max(2,(int)(area.Width*scale)/2*2),h=Math.Max(2,(int)(area.Height*scale)/2*2);
@@ -53,6 +54,10 @@ internal sealed class Capture
             string src=Source.IsWindow?$"hwnd={(long)Source.Handle}":$"hmonitor={(long)Source.Handle}";
             if(Source.Region!=null)src+=$":crop_left={area.Left-full.Left}:crop_top={area.Top-full.Top}:crop_right={full.Right-area.Right}:crop_bottom={full.Bottom-area.Bottom}";
             string graph=$"gfxcapture={src}:width={w}:height={h}:resize_mode=scale_aspect:dup_frames=1:max_framerate={profile.Fps}";
+            // gfxcapture resets its own first PTS to zero, potentially long after
+            // audio input opened. Anchor before download/conversion/encoding;
+            // never infer this offset from delayed FFmpeg progress messages.
+            graph+=","+epoch.VideoFilter;
             if(!nvenc)graph+=",hwdownload,format=bgra,scale=in_range=pc:out_range=tv:out_color_matrix=bt601,format=yuv420p";
             // NVENC converts BGRA to limited-range YUV with the 601 matrix. The
             // incoming WGC frame carries full-range RGB tags, which would otherwise survive encoding.
@@ -80,7 +85,7 @@ internal sealed class Capture
             process.Exited+=(_,_)=>firstFrame.TrySetException(new IOException("Could not start video capture. "+ErrorText));
             process.Start();ChildJob.Track(process);process.BeginErrorReadLine();process.BeginOutputReadLine();
             await firstFrame.Task.WaitAsync(TimeSpan.FromSeconds(14));
-            Clock.Start();Home.Log($"Capture started: {(Replay?"replay":"recording")}, {w}x{h}, {profile.Fps} FPS, {(nvenc?"NVENC":"x264")}");
+            Home.Log($"Capture started: {(Replay?"replay":"recording")}, {w}x{h}, {profile.Fps} FPS, {(nvenc?"NVENC":"x264")}, shared A/V epoch, startup {Clock.Elapsed.TotalMilliseconds:0} ms");
         }catch{await EndProcess();Home.Clear(Folder);throw;}
     }
     string[] Segments()=>Directory.GetFiles(Folder,"*.mkv").Order(StringComparer.Ordinal).ToArray();
