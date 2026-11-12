@@ -14,7 +14,7 @@ internal sealed class UpdateInstaller : IUpdateInstaller
         Directory.CreateDirectory(root);UpdatePackage.NoLinks(root);
         // Completed helper jobs contain only the small updater binaries. Keep
         // failed jobs and their backups for diagnosis/recovery.
-        foreach(string old in Directory.GetDirectories(root))if(File.Exists(Path.Combine(old,"complete")))
+        foreach(string old in Directory.GetDirectories(root))if(File.Exists(Path.Combine(old,"complete")) || (File.Exists(Path.Combine(old,"cancel")) && !Directory.Exists(Path.Combine(old,"backup"))))
             try{Directory.Delete(old,true);}catch(IOException){}catch(UnauthorizedAccessException){}
         string job=Path.Combine(root,Guid.NewGuid().ToString("N")),stage=Path.Combine(job,"stage");Directory.CreateDirectory(job);
         try{
@@ -44,7 +44,7 @@ internal sealed class UpdateInstaller : IUpdateInstaller
                 if(deadline.Elapsed>TimeSpan.FromSeconds(15))throw new TimeoutException("Updater did not become ready.");
                 await Task.Delay(100,token);
             }
-            token.ThrowIfCancellationRequested();File.WriteAllText(Path.Combine(job,"proceed"),"");
+            token.ThrowIfCancellationRequested();if(helper.HasExited)throw new IOException("Updater exited before installation.");File.WriteAllText(Path.Combine(job,"proceed"),"");
         }catch{File.WriteAllText(Path.Combine(job,"cancel"),"");throw;}
     }
 }

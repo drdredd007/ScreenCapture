@@ -89,6 +89,7 @@ internal static class FeatureUiChecks
         Click(window,"DownloadUpdateButton");await Ready(window);
         Require(Find<Button>(window,"OpenUpdateButton").Visibility==Visibility.Visible && File.ReadAllBytes(Path.Combine(Home.Root,"Updates",releases.Name)).SequenceEqual(releases.Bytes),"verified ZIP/open folder state");
         Require(installer.Prepared==1 && !restart && Find<TextBlock>(window,"UpdateStatus").Text.Contains("installer test failure"),"installer failure closed Moments or hid error");
+        Click(window,"CheckUpdateButton");await Ready(window);
         window.Width=850;window.Height=590;Find<Border>(window,"UpdatesCard").BringIntoView();await Layout(window);
         Shot(window,Path.Combine(reportDirectory,"updates-settings.png"));
         releases.Tag="v"+UpdateService.Current;Click(window,"CheckUpdateButton");await Ready(window);

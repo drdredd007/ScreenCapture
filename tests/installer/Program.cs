@@ -9,11 +9,11 @@ static class Checks
     static void Reject(Action action,string message){try{action();}catch(Exception ex) when(ex is IOException or InvalidDataException or OperationCanceledException){return;}throw new Exception(message);}
     static void Until(Func<bool> ready){var watch=Stopwatch.StartNew();while(!ready()){if(watch.Elapsed.TotalSeconds>20)throw new Exception("Timed out");Thread.Sleep(50);}}
     static Process Start(string exe,params string[] args){var si=new ProcessStartInfo(exe){UseShellExecute=false};foreach(string arg in args)si.ArgumentList.Add(arg);return Process.Start(si)!;}
-    static void Populate(string stage,string helper){
+    static void Populate(string stage,string helper,bool real=false){
         Directory.CreateDirectory(stage);
         foreach(string file in UpdatePackage.Files){string dest=Path.Combine(stage,file);Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
             if(UpdatePackage.HelperFiles.Contains(file))File.Copy(Path.Combine(helper,file),dest);
-            else if(file.StartsWith("Moments."))File.Copy(Path.Combine(AppContext.BaseDirectory,file),dest);
+            else if(file.StartsWith("Moments."))File.Copy(Path.Combine(real?helper:AppContext.BaseDirectory,file),dest);
             else File.WriteAllText(dest,"new "+file);
         }
     }
@@ -33,6 +33,7 @@ static class Checks
             ProcessCheck(root,args[0],false,false);
             ProcessCheck(root,args[0],true,false);
             ProcessCheck(root,args[0],false,true);
+            ProcessCheck(root,args[0],false,false,true);
             Console.WriteLine("PASS: updater archive validation, tamper detection, rollback, user-data preservation, actual parent exit/replace/restart handshake, failed startup rollback and cancellation.");return 0;
         }finally{Directory.Delete(root,true);}
     }
@@ -68,9 +69,9 @@ static class Checks
             Require(File.ReadAllText(Path.Combine(target,"settings.json"))=="keep","settings changed");
         }
     }
-    static void ProcessCheck(string root,string helper,bool fail,bool cancel){
-        string job=Path.Combine(root,$"process-{fail}-{cancel}"),target=Path.Combine(root,$"installed-{fail}-{cancel}"),stage=Path.Combine(job,"stage");Directory.CreateDirectory(job);
-        Populate(target,helper);Populate(stage,helper);File.WriteAllText(Path.Combine(target,"README.md"),"old");
+    static void ProcessCheck(string root,string helper,bool fail,bool cancel,bool real=false){
+        string job=Path.Combine(root,$"process-{fail}-{cancel}-{real}"),target=Path.Combine(root,$"installed-{fail}-{cancel}-{real}"),stage=Path.Combine(job,"stage");Directory.CreateDirectory(job);
+        Populate(target,helper,real);Populate(stage,helper,real);File.WriteAllText(Path.Combine(target,"README.md"),"old");
         File.WriteAllText(Path.Combine(target,"settings.json"),"keep");Directory.CreateDirectory(Path.Combine(target,"Videos"));File.WriteAllText(Path.Combine(target,"Videos","clip.mp4"),"keep video");
         if(fail)File.WriteAllText(Path.Combine(target,"fail-start"),"");
         foreach(string file in UpdatePackage.HelperFiles)File.Copy(Path.Combine(helper,file),Path.Combine(job,file));
@@ -87,6 +88,12 @@ static class Checks
             else if(fail){Until(()=>File.Exists(Path.Combine(target,"restored")));Require(updater.ExitCode==1 && File.ReadAllText(Path.Combine(target,"README.md"))=="old","failed startup did not restore old version");}
             else Require(updater.ExitCode==0 && File.Exists(Path.Combine(job,"started")) && File.ReadAllText(Path.Combine(target,"README.md"))=="new README.md","update/restart failed");
             Require(File.ReadAllText(Path.Combine(target,"settings.json"))=="keep" && File.ReadAllText(Path.Combine(target,"Videos","clip.mp4"))=="keep video","update changed user data");
+            if(real){
+                using var app=Process.GetProcessById(int.Parse(File.ReadAllText(Path.Combine(job,"started"))));
+                try{Require(app.CloseMainWindow(),"updated WPF window did not open");Require(app.WaitForExit(15000),"updated WPF application did not close normally");}
+                finally{if(!app.HasExited){app.Kill(true);app.WaitForExit();}}
+                Console.WriteLine("PASS: production Moments.exe restarted, acknowledged startup, opened its WPF window and closed normally after installation.");
+            }
         }finally{if(!parent.HasExited){parent.Kill();parent.WaitForExit();}}
     }
 }

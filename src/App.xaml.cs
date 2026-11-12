@@ -28,7 +28,7 @@ public partial class App : Application
                 if(new[]{"take_","ring_","edit_","view_"}.Any(name.StartsWith))Home.Clear(dir);
             }
             var window=new MainWindow();MainWindow=window;window.Show();
-            if(e.Args.Length==2 && e.Args[0]=="--updated")File.WriteAllText(e.Args[1],"started");
+            if(e.Args.Length==2 && e.Args[0]=="--updated")File.WriteAllText(e.Args[1],Environment.ProcessId.ToString());
             if(e.Args.Length==2 && e.Args[0]=="--update-failed"){
                 Home.Log("Update failed: "+File.ReadAllText(e.Args[1]));
                 MessageBox.Show("The update could not be installed. Your previous version is running.\n\nDetails: "+e.Args[1],"Moments update");
