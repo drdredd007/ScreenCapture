@@ -16,7 +16,7 @@ internal sealed class Capture
     AudioFeed? audio;
     readonly TaskCompletionSource firstFrame=new(TaskCreationOptions.RunContinuationsAsynchronously);
     readonly StringBuilder errors=new();
-    public string? Failure=>audio?.Completion.IsFaulted==true ? "Audio device disconnected. "+audio.Completion.Exception!.GetBaseException().Message : process?.HasExited==true ? ErrorText : null;
+    public string? Failure=>audio?.Completion.IsFaulted==true ? "Audio capture failed. "+audio.Completion.Exception!.GetBaseException().Message : process?.HasExited==true ? ErrorText : null;
     string ErrorText{get{lock(errors)return errors.Length==0?"Capture ended unexpectedly. Check the recording source.":errors.ToString().Trim();}}
     public Capture(Target source,Profile profile,bool system,bool mic,bool replay,int minutes,string label,bool separateApps=false)
     {
@@ -163,3 +163,4 @@ internal static class ChildJob
     }
     public static void Track(Process p){try{AssignProcessToJobObject(job,p.Handle);}catch(InvalidOperationException){}}
 }
+

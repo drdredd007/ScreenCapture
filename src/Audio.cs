@@ -29,6 +29,7 @@ internal sealed partial class AudioFeed : IDisposable
             using var microphone=mic?Endpoint.Open(false):null;
             ready.TrySetResult();
             pipe.WaitForConnectionAsync(stop.Token).GetAwaiter().GetResult();
+            using var output=new BufferedAudioOutput(pipe,stop.Token);
             speakers?.Start();microphone?.Start();isolated?.Start();
             long origin=Stopwatch.GetTimestamp();
             long sampleZero=(long)(origin*(48000.0/Stopwatch.Frequency));
@@ -37,6 +38,7 @@ internal sealed partial class AudioFeed : IDisposable
             long next=0;
             while(!stop.IsCancellationRequested)
             {
+                output.Check();
                 speakers?.Poll(sampleZero,next);microphone?.Poll(sampleZero,next);isolated?.Poll(sampleZero,next);
                 long available=(long)((Stopwatch.GetTimestamp()-origin)*(48000.0/Stopwatch.Frequency))-3840;
                 while(next+480<=available && !stop.IsCancellationRequested)
@@ -46,7 +48,7 @@ internal sealed partial class AudioFeed : IDisposable
                         microphone?.Take(next+i,frame,i*4+2);
                     }
                     isolated?.Write(next);Buffer.BlockCopy(frame,0,bytes,0,bytes.Length);
-                    pipe.WriteAsync(bytes,stop.Token).AsTask().GetAwaiter().GetResult();
+                    output.Write(bytes);
                     next+=480;
                 }
                 stop.Token.WaitHandle.WaitOne(4);
@@ -68,6 +70,7 @@ internal sealed partial class AudioFeed : IDisposable
         float[]? floatPacket;
         IDeviceEnumerator? enumerator; IDevice? device; IAudioClient? client; IAudioCaptureClient? capture;
         bool started;
+        AudioPacketTimeline timeline=new(false);
         long[]? stamps;
         public static Endpoint Open(bool loopback)
         {
@@ -82,7 +85,7 @@ internal sealed partial class AudioFeed : IDisposable
         }
         public static Endpoint ForProcess(int pid,CancellationToken cancel){
             var e=new Endpoint();
-            try{e.stamps=new long[Capacity];e.floatPacket=new float[8192];e.client=ActivateProcess(pid,cancel);e.Initialize(true);return e;}
+            try{e.timeline=new(true);e.stamps=new long[Capacity];e.floatPacket=new float[8192];e.client=ActivateProcess(pid,cancel);e.Initialize(true);return e;}
             catch{e.Dispose();throw;}
         }
         void Initialize(bool loopback){
@@ -99,11 +102,12 @@ internal sealed partial class AudioFeed : IDisposable
             capture!.GetNextPacketSize(out uint size);
             while(size>0)
             {
-                capture.GetBuffer(out nint data,out uint frames,out uint flags,out _,out ulong qpc);
+                capture.GetBuffer(out nint data,out uint frames,out uint flags,out ulong devicePosition,out ulong qpc);
                 try {
                     int count=checked((int)frames);
-                    long first=(long)Math.Round(qpc*0.0048)-zero;
-                    if((flags&4)!=0) first=next+3840-count;
+                    if(count==0)break;
+                    long now=(long)(Stopwatch.GetTimestamp()*(48000.0/Stopwatch.Frequency))-zero;
+                    long first=timeline.Place(count,flags,devicePosition,qpc,zero,now);
                     bool silent=(flags&2)!=0;
                     if(!silent){
                         if(floatPacket!=null){if(floatPacket.Length<count*2)Array.Resize(ref floatPacket,count*2);Marshal.Copy(data,floatPacket,0,count*2);}
@@ -164,4 +168,5 @@ internal sealed partial class AudioFeed : IDisposable
         void ReleaseBuffer(uint frames);void GetNextPacketSize(out uint frames);
     }
 }
+
 

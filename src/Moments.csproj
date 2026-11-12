@@ -3,7 +3,9 @@
     <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms><Nullable>enable</Nullable>
     <AssemblyName>Moments</AssemblyName><ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>1.0.1</Version>
     <ApplicationIcon>moments.ico</ApplicationIcon><RestoreIgnoreFailedSources>true</RestoreIgnoreFailedSources>
   </PropertyGroup>
   <ItemGroup><InternalsVisibleTo Include="Moments.MontageTests"/></ItemGroup>
 </Project>
+
