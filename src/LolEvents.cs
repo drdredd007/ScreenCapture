@@ -72,6 +72,11 @@ internal sealed class LolEventTracker
     string? player;double lastTime;int generation;
     public bool NewMatch {get;private set;}
     public void Reset(){seen.Clear();player=null;lastTime=0;}
+    static bool Selected(LolEventKind kind,LolEventKind selected)=>
+        (selected&kind)!=0 || (kind switch{
+            LolEventKind.DragonSteal=>(selected&LolEventKind.Dragon)!=0,
+            LolEventKind.BaronSteal=>(selected&LolEventKind.Baron)!=0,
+            LolEventKind.HeraldSteal=>(selected&LolEventKind.Herald)!=0,_=>false});
     public LolEvent[] Update(LolSnapshot snapshot,LolEventKind selected)
     {
         NewMatch=player!=null && (snapshot.GameTime<lastTime-2 || !string.Equals(player,snapshot.Player,StringComparison.OrdinalIgnoreCase));
@@ -79,6 +84,6 @@ internal sealed class LolEventTracker
         if(baseline){seen.Clear();generation++;}
         player=snapshot.Player;lastTime=snapshot.GameTime;
         var added=snapshot.Events.Where(e=>seen.Add(e.Id)).ToArray();
-        return baseline?[]:added.Where(e=>(selected&e.Kind)!=0).OrderBy(e=>e.GameTime).Select(e=>e with{Id=generation+":"+e.Id}).ToArray();
+        return baseline?[]:added.Where(e=>Selected(e.Kind,selected)).OrderBy(e=>e.GameTime).Select(e=>e with{Id=generation+":"+e.Id}).ToArray();
     }
 }

@@ -135,7 +135,10 @@ internal sealed class Capture
     {
         await EndProcess();Clock.Stop();
         string raw=Path.Combine(Folder,"take.mkv");
-        if(Replay || !File.Exists(raw)||new FileInfo(raw).Length==0){if(!Replay || !preserveReplay)Home.Clear(Folder);return null;}
+        if(Replay || !File.Exists(raw)||new FileInfo(raw).Length==0){
+            if(Replay && preserveReplay)File.WriteAllText(Path.Combine(Folder,"keep-replay.txt"),"An automatic replay could not be saved. These source segments are retained for recovery.");
+            else Home.Clear(Folder);return null;
+        }
         string dest=Home.Unique(Home.Videos,Label,"mp4");
         string tmp=Path.Combine(Folder,"final.mp4");
         try{
