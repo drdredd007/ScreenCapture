@@ -2,7 +2,7 @@ name: Windows build and release
 
 on:
   push:
-    branches: [main, codex/fix-av-sync]
+    branches: [main, codex/video-cadence-updates]
   workflow_dispatch:
 
 permissions:
@@ -50,13 +50,17 @@ jobs:
         run: |
           dotnet run --project tests/autosave/AutoSaveTests.csproj -c Release -p:NuGetAudit=false
           if ($LASTEXITCODE) { throw 'Auto-save tests failed' }
+      - name: GitHub update download tests
+        run: |
+          dotnet run --project tests/updates/UpdateTests.csproj -c Release -p:NuGetAudit=false
+          if ($LASTEXITCODE) { throw 'Update tests failed' }
       - name: Build Windows application
         run: ./build.ps1
       - name: Compile Windows integration tests
         run: |
           dotnet build tests/montage/MontageTests.csproj -c Release --configfile NuGet.Config -p:NuGetAudit=false
           if ($LASTEXITCODE) { throw 'Windows integration test build failed' }
-      - name: Library UI and decoded A/V synchronization tests
+      - name: Library, update UI, A/V sync and live video cadence tests
         run: ./tests/features.ps1
       - uses: actions/upload-artifact@v4
         if: always()
@@ -84,11 +88,11 @@ jobs:
           @"
           Moments $version for Windows 11 x64.
 
-          Fixes late audio caused by separate audio/video startup clocks. System audio, microphone, separate application stems, video and replay event markers now share a recording epoch. Includes the LoL auto-save and Library List / Tiles features from 1.1.0.
+          Fixes recorded-video stutter by scheduling video capture independently of buffered audio. Preserves the shared A/V clock. Adds Settings → Updates: check GitHub releases, download the Windows ZIP with progress/cancellation and SHA-256 verification, then open the download folder. Installation: close Moments and extract the downloaded ZIP into the existing Moments folder.
 
           Download **$zip**, extract the whole archive to a writable folder, and run **Moments.exe**. FFmpeg and FFprobe are included. Requires **.NET Desktop Runtime 10 x64**.
 
-          Validation: Windows Release build, audio regression tests, LoL parser/scheduler tests and WPF settings/library UI tests, and decoded flash/tone synchronization checks for recordings and replay exports. Live LoL event delivery and audio-device capture still require a real game session on a Windows PC.
+          Validation: Windows Release build, audio regression tests, LoL parser/scheduler tests and WPF settings/library UI tests, decoded flash/tone synchronization checks, live-pipe video cadence measurements and update download/integrity tests. Live LoL event delivery and audio-device capture still require a real game session on a Windows PC.
 
           Source commit: $env:GITHUB_SHA
           SHA-256: $hash

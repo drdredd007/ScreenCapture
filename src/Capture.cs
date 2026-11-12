@@ -64,11 +64,12 @@ internal sealed class Capture
             graph+=","+Media.DesktopYuv;
             graph+="[video]";
             bool mix=system && !separateApps;
-            if(mix&&mic)graph+=";[0:a]asplit=2[s][m];[s]pan=stereo|c0=c0|c1=c1[sys];[m]pan=stereo|c0=c2|c1=c3[mic]";
-            else if(mix)graph+=";[0:a]pan=stereo|c0=c0|c1=c1[sys]";
-            else if(mic)graph+=";[0:a]pan=stereo|c0=c2|c1=c3[mic]";
-            else if(separateApps)graph+=";[0:a]pan=stereo|c0=c0|c1=c1[clock]";
-            args.AddRange(["-filter_complex",graph,"-map","[video]"]);
+            string? audioGraph=null;
+            if(mix&&mic)audioGraph="[0:a]asplit=2[s][m];[s]pan=stereo|c0=c0|c1=c1[sys];[m]pan=stereo|c0=c2|c1=c3[mic]";
+            else if(mix)audioGraph="[0:a]pan=stereo|c0=c0|c1=c1[sys]";
+            else if(mic)audioGraph="[0:a]pan=stereo|c0=c2|c1=c3[mic]";
+            else if(separateApps)audioGraph="[0:a]pan=stereo|c0=c0|c1=c1[clock]";
+            CaptureGraphs.Add(args,graph,audioGraph);args.AddRange(["-map","[video]"]);
             if(mix)args.AddRange(["-map","[sys]"]);if(mic)args.AddRange(["-map","[mic]"]);
             if(separateApps&&!mic)args.AddRange(["-map","[clock]"]);
             args.AddRange(["-c:v",nvenc?"h264_nvenc":"libx264","-preset",nvenc?"p3":"veryfast","-profile:v","high",

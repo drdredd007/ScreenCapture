@@ -3,6 +3,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Net;
+using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -15,6 +17,10 @@ internal static class FeatureUiChecks
     static T Find<T>(Window w,string name) where T:class=>(T)w.FindName(name);
     static void Click(Window w,string name)=>Find<Button>(w,name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
     static async Task Layout(Window w){await w.Dispatcher.InvokeAsync(()=>w.UpdateLayout(),DispatcherPriority.ApplicationIdle);await Task.Delay(100);}
+    static async Task Ready(Window w){
+        for(int i=0;i<100;i++){if(Find<Button>(w,"CheckUpdateButton").IsEnabled)return;await Task.Delay(50);}
+        throw new Exception("Update UI did not finish the request");
+    }
     static IEnumerable<Button> Cards(Window w)=>Find<StackPanel>(w,"ClipList").Children.OfType<Panel>().SelectMany(p=>p.Children.OfType<Button>());
     static IEnumerable<Image> Images(DependencyObject root){
         for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++){
@@ -41,7 +47,8 @@ internal static class FeatureUiChecks
         for(int i=2;i<=8;i++)File.Copy(source,Path.Combine(Home.Videos,$"sample {i:00} — a longer recording name for layout.mp4"));
         File.SetCreationTime(source,DateTime.Now.AddDays(-1));
         ClipEvents.Write(source,0,.3,[new("1","Pentakill",120,.1,.1)]);
-        var window=new MainWindow();window.Show();await Layout(window);
+        var releases=new FakeReleases{Tag="v9.0.0",Delay=150};
+        var window=new MainWindow(new UpdateService(new HttpClient(releases)));window.Show();await Layout(window);
         Click(window,"LibraryNav");await Layout(window);
         Require(Cards(window).Count()==8,"List view lost recordings");
         // Let real thumbnail generation finish before rendering the preview.
@@ -66,6 +73,22 @@ internal static class FeatureUiChecks
         Require(!Settings.Load().LolAutoSave.Enabled && !Find<WrapPanel>(window,"LolEventOptions").IsEnabled,"auto-save disable/state binding");
         enabled.IsChecked=true;enabled.RaiseEvent(new RoutedEventArgs(CheckBox.ClickEvent));await Layout(window);
         Shot(window,Path.Combine(reportDirectory,"lol-autosave-settings.png"));
+        Require(Find<TextBlock>(window,"InstalledVersion").Text.Contains(UpdateService.Current.ToString()),"installed version label");
+        Require(!Find<Button>(window,"DownloadUpdateButton").IsEnabled,"download enabled before checking");
+        Click(window,"CheckUpdateButton");
+        Require(!Find<Button>(window,"CheckUpdateButton").IsEnabled && Find<Button>(window,"CancelUpdateButton").Visibility==Visibility.Visible,"loading/cancel state");
+        await Ready(window);Require(Find<Button>(window,"DownloadUpdateButton").IsEnabled,"new update did not enable download");
+        Click(window,"DownloadUpdateButton");await Ready(window);
+        Require(Find<Button>(window,"OpenUpdateButton").Visibility==Visibility.Visible && File.ReadAllBytes(Path.Combine(Home.Root,"Updates",releases.Name)).SequenceEqual(releases.Bytes),"verified ZIP/open folder state");
+        window.Width=850;window.Height=590;Find<Border>(window,"UpdatesCard").BringIntoView();await Layout(window);
+        Shot(window,Path.Combine(reportDirectory,"updates-settings.png"));
+        releases.Tag="v"+UpdateService.Current;Click(window,"CheckUpdateButton");await Ready(window);
+        Require(!Find<Button>(window,"DownloadUpdateButton").IsEnabled && Find<TextBlock>(window,"UpdateStatus").Text.Contains("latest version"),"up-to-date state");
+        releases.Status=HttpStatusCode.Forbidden;Click(window,"CheckUpdateButton");await Ready(window);
+        Require(!Find<Button>(window,"DownloadUpdateButton").IsEnabled && Find<TextBlock>(window,"UpdateStatus").Text.Contains("limiting"),"network failure state");
+        releases.Status=HttpStatusCode.OK;releases.Delay=5000;Click(window,"CheckUpdateButton");Click(window,"CancelUpdateButton");await Ready(window);
+        Require(Find<TextBlock>(window,"UpdateStatus").Text.Contains("canceled"),"update cancellation state");
+        note("Updates UI: installed version, check/download actions, progress/cancel, verified archive, open-folder state, current-version and network errors passed.");
         note("List/tiles: identical recordings, date groups, filter, empty state, minimum window size and persisted view. All 13 event settings, persistence and enable/disable binding passed.");
         // The surrounding test Application shuts down all windows after PASS.
     }

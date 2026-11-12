@@ -32,6 +32,20 @@
  <TextBlock x:Name="LolSettingsStatus" Style="{StaticResource Sub}" Foreground="#B7F59B" Margin="0,8,0,0" TextWrapping="Wrap"/>
  </StackPanel></Border>
  <Border Style="{StaticResource Card}" Margin="0,12,0,0"><StackPanel><TextBlock Style="{StaticResource Kicker}" Text="03    /    AUDIO TRACKS"/><TextBlock Style="{StaticResource Sub}" Margin="0,7" Text="Applications that play sound are added automatically, including apps started during recording. Mute individual apps in the editor."/><WrapPanel><CheckBox x:Name="SystemBox" Content="System audio" Click="SettingsChanged"/><CheckBox x:Name="MicBox" Content="Microphone" Click="SettingsChanged"/></WrapPanel><CheckBox x:Name="AppTracksBox" Content="Separate app tracks" ToolTip="One desktop audio track per application. Turn off to use the default output device as a single system mix." IsEnabled="{Binding IsChecked,ElementName=SystemBox}" Checked="SettingsChanged" Unchecked="SettingsChanged"/></StackPanel></Border>
+ <Border x:Name="UpdatesCard" Style="{StaticResource Card}" Margin="0,12,0,0"><StackPanel>
+ <TextBlock Style="{StaticResource Kicker}" Text="04    /    UPDATES"/>
+ <TextBlock x:Name="InstalledVersion" FontWeight="SemiBold" Margin="0,8,0,4"/>
+ <TextBlock x:Name="UpdateStatus" Style="{StaticResource Sub}" TextWrapping="Wrap" Text="Check for a newer Windows version on GitHub."/>
+ <ProgressBar x:Name="UpdateProgress" Visibility="Collapsed" Minimum="0" Maximum="100" Height="6" Margin="0,12,0,4" Foreground="{StaticResource Mint}"/>
+ <WrapPanel Margin="0,12,0,0">
+ <Button x:Name="CheckUpdateButton" Content="Check for updates" Click="CheckUpdateClick"/>
+ <Button x:Name="DownloadUpdateButton" Content="Download update" Click="DownloadUpdateClick" IsEnabled="False"/>
+ <Button x:Name="CancelUpdateButton" Content="Cancel" Click="CancelUpdateClick" Visibility="Collapsed"/>
+ <Button x:Name="OpenUpdateButton" Content="Open download folder ↗" Click="OpenUpdateClick" Visibility="Collapsed"/>
+ <Button x:Name="UpdateReleaseButton" Content="Release notes ↗" Click="UpdateReleaseClick" IsEnabled="False"/>
+ </WrapPanel>
+ <TextBlock Style="{StaticResource Sub}" TextWrapping="Wrap" Margin="0,8,0,0" Text="After downloading: close Moments, extract the ZIP into your Moments folder with file replacement, then start it again. Keep your Videos folder and settings.json."/>
+ </StackPanel></Border>
  </StackPanel></Grid></ScrollViewer>
  <TextBlock x:Name="Notice" Grid.Row="2" Text="Ready to record" Style="{StaticResource Sub}" TextTrimming="CharacterEllipsis" MaxHeight="48" Margin="0,12,0,0"/>
  </Grid></Grid></Window>

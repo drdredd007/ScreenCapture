@@ -43,12 +43,14 @@ internal static class AvSyncChecks
                 string flashes=string.Join("+",Events.Select(e=>$"between(time(0),{N(epoch.UnixSeconds+e)},{N(epoch.UnixSeconds+e+.12)})"));
                 string video=$"color=black:size=64x64:rate=30,realtime,drawbox=color=white:t=fill:enable='{flashes}'";
                 if(corrected)video+=","+epoch.VideoFilter;
-                string graph=video+"[v];[0:a]asplit=2[s][m];[s]pan=stereo|c0=c0|c1=c1[sys];[m]pan=stereo|c0=c2|c1=c3[mic]";
+                string audioGraph="[0:a]asplit=2[s][m];[s]pan=stereo|c0=c0|c1=c1[sys];[m]pan=stereo|c0=c2|c1=c3[mic]";
                 string raw=Path.Combine(dir,"take.mkv");
-                await Proc.Run("ffmpeg",["-v","error","-y","-f","s16le","-ar","48000","-ac","4","-i",pcm,
-                    "-filter_complex",graph,"-map","[v]","-map","[sys]","-map","[mic]","-t","6",
+                var args=new List<string>{"-v","error","-y","-f","s16le","-ar","48000","-ac","4","-i",pcm};
+                CaptureGraphs.Add(args,video+"[v]",audioGraph);
+                args.AddRange(["-map","[v]","-map","[sys]","-map","[mic]","-t","6",
                     "-c:v","libx264","-preset","ultrafast","-bf","0","-g","60","-r","30","-fps_mode","cfr",
                     "-force_key_frames","expr:gte(t,n_forced*2)","-c:a","aac","-b:a","160k",raw]);
+                await Proc.Run("ffmpeg",args);
                 var baseline=await Measure(raw,0);
                 if(!corrected){
                     Check(baseline.All(d=>d>.6),"fixture failed to reproduce the old late-audio bug");

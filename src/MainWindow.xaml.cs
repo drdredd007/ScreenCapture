@@ -25,9 +25,10 @@ public partial class MainWindow : Window
     long lastReplayPress=-1000;
     bool replayQueued;
     static Brush BrushOf(string s)=>(Brush)new BrushConverter().ConvertFromString(s)!;
-    public MainWindow()
+    public MainWindow():this(new UpdateService()){}
+    internal MainWindow(UpdateService updates)
     {
-        InitializeComponent();
+        updateService=updates;InitializeComponent();InitializeUpdates();
         Style=(Style)FindResource(typeof(Window));
         Quality.ItemsSource=Profile.All;Quality.SelectedIndex=cfg.Quality;
         LengthBox.ItemsSource=new[]{"5 minutes","10 minutes"};LengthBox.SelectedIndex=cfg.Minutes==10?1:0;
@@ -60,7 +61,7 @@ public partial class MainWindow : Window
     }
     async void OnClosing(object? s,CancelEventArgs e)
     {
-        if(closed)return;e.Cancel=true;if(quitting)return;quitting=true;timer.Stop();lolTimer.Stop();lolLife.Cancel();Message("Finishing recording…");
+        if(closed)return;e.Cancel=true;if(quitting)return;quitting=true;timer.Stop();lolTimer.Stop();lolLife.Cancel();await StopUpdates();Message("Finishing recording…");
         await gate.WaitAsync();try{if(capture!=null)await StopCapture();}catch(Exception ex){Home.Log(ex.ToString());}
         finally{StopListening();Native.UnregisterHotKey(hwnd,hotkeyId);waiter?.Unregister(null);showEvent.Dispose();lolClient.Dispose();tray.Visible=false;tray.Dispose();closed=true;gate.Release();_=Dispatcher.BeginInvoke(()=>System.Windows.Application.Current.Shutdown());}
     }
