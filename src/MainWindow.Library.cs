@@ -7,16 +7,18 @@ public partial class MainWindow
     void RefreshLibraryViewButtons(){
         ListViewButton.Background=BrushOf(cfg.LibraryTiles?"#29313A":"#405545");
         TilesViewButton.Background=BrushOf(cfg.LibraryTiles?"#405545":"#29313A");
-        ListViewButton.IsEnabled=cfg.LibraryTiles;TilesViewButton.IsEnabled=!cfg.LibraryTiles;
+        ListViewButton.Foreground=BrushOf(cfg.LibraryTiles?"#CBD2D8":"#B7F59B");
+        TilesViewButton.Foreground=BrushOf(cfg.LibraryTiles?"#B7F59B":"#CBD2D8");
     }
     void LibraryViewClick(object sender,RoutedEventArgs e){
-        cfg.LibraryTiles=((Button)sender).Tag as string=="tiles";cfg.Save();RefreshLibraryViewButtons();LoadLibrary();
+        bool tiles=((Button)sender).Tag as string=="tiles";if(tiles==cfg.LibraryTiles)return;
+        cfg.LibraryTiles=tiles;cfg.Save();RefreshLibraryViewButtons();LoadLibrary();
     }
     void LibraryResized(object sender,SizeChangedEventArgs e){
         if(!initialized || !cfg.LibraryTiles)return;
         double width=LibraryLayout.TileWidth(ClipList.ActualWidth);
         foreach(var wrap in ClipList.Children.OfType<WrapPanel>())foreach(var button in wrap.Children.OfType<Button>()){
-            button.Width=width;
+            button.Width=width;button.Height=(width-18)*9/16+108;
             if(button.Content is StackPanel stack && stack.Children[0] is Border preview)preview.Height=(width-18)*9/16;
         }
     }
@@ -34,7 +36,7 @@ public partial class MainWindow
         var markers=ClipEvents.Read(file.FullName);
         if(markers?.Events?.Length>0)words.Children.Add(new TextBlock{Text=$"AUTO · LoL · {markers.Events.Length} events",Foreground=BrushOf("#B7F59B"),FontSize=11,Margin=new Thickness(0,4,0,0)});
         if(tiles){
-            button.Width=width;preview.Height=(width-18)*9/16;
+            button.Width=width;button.Height=(width-18)*9/16+108;preview.Height=(width-18)*9/16;
             var stack=new StackPanel();stack.Children.Add(preview);words.Margin=new Thickness(2,9,2,3);stack.Children.Add(words);
             button.Content=stack;
         }else{

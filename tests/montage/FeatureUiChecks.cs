@@ -16,6 +16,20 @@ internal static class FeatureUiChecks
     static void Click(Window w,string name)=>Find<Button>(w,name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
     static async Task Layout(Window w){await w.Dispatcher.InvokeAsync(()=>w.UpdateLayout(),DispatcherPriority.ApplicationIdle);await Task.Delay(100);}
     static IEnumerable<Button> Cards(Window w)=>Find<StackPanel>(w,"ClipList").Children.OfType<Panel>().SelectMany(p=>p.Children.OfType<Button>());
+    static IEnumerable<Image> Images(DependencyObject root){
+        for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++){
+            var child=VisualTreeHelper.GetChild(root,i);if(child is Image image)yield return image;
+            foreach(var nested in Images(child))yield return nested;
+        }
+    }
+    static async Task Thumbnails(Window window){
+        for(int i=0;i<300;i++){
+            var images=Images(Find<StackPanel>(window,"ClipList")).ToArray();
+            if(images.Length==8 && images.All(image=>image.Source!=null))return;
+            await Task.Delay(100);
+        }
+        throw new Exception("Library thumbnails did not finish loading");
+    }
     static void Shot(Window w,string file){
         w.UpdateLayout();var bmp=new RenderTargetBitmap((int)Math.Ceiling(w.ActualWidth),(int)Math.Ceiling(w.ActualHeight),96,96,PixelFormats.Pbgra32);
         bmp.Render(w);var png=new PngBitmapEncoder();png.Frames.Add(BitmapFrame.Create(bmp));using var output=File.Create(file);png.Save(output);
@@ -31,11 +45,11 @@ internal static class FeatureUiChecks
         Click(window,"LibraryNav");await Layout(window);
         Require(Cards(window).Count()==8,"List view lost recordings");
         // Let real thumbnail generation finish before rendering the preview.
-        await Task.Delay(2500);await Layout(window);Shot(window,Path.Combine(reportDirectory,"library-list.png"));
+        await Thumbnails(window);await Layout(window);Shot(window,Path.Combine(reportDirectory,"library-list.png"));
         Click(window,"TilesViewButton");await Layout(window);
         Require(Cards(window).Count()==8 && Settings.Load().LibraryTiles,"tile switch/persistence");
         Require(Find<StackPanel>(window,"ClipList").Children.OfType<WrapPanel>().Count()==2,"tile date grouping");
-        await Task.Delay(500);Shot(window,Path.Combine(reportDirectory,"library-tiles.png"));
+        await Thumbnails(window);Shot(window,Path.Combine(reportDirectory,"library-tiles.png"));
         window.Width=850;window.Height=590;await Layout(window);
         foreach(var wrap in Find<StackPanel>(window,"ClipList").Children.OfType<WrapPanel>())foreach(var card in wrap.Children.OfType<Button>())
             Require(card.ActualWidth<=wrap.ActualWidth && card.ActualHeight>100,"tile exceeds viewport or preview missing");
