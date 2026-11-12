@@ -9,6 +9,8 @@ namespace Moments;
 public partial class Editor : Window
 {
     readonly string path,folder=Home.Temp("view");
+    readonly EditingWorkspace workspace;
+    bool sending;
     readonly CancellationTokenSource life=new();
     CancellationTokenSource? exporting;
     readonly List<Interval> cuts=[];
@@ -20,13 +22,14 @@ public partial class Editor : Window
     bool internalMove,playing,ready,closing,canClose;
     double a,b,playStart;
     readonly Stopwatch playback=new();
-    internal Editor(string path)
+    internal Editor(string path,EditingWorkspace? workspace=null)
     {
+        this.workspace=workspace??(Application.Current.MainWindow as MainWindow)?.Editing??new EditingWorkspace();
         this.path=path;gameEvents=ClipEvents.Read(path)?.Events??[];InitializeComponent();
         Video.Failed+=err=>{if(!closing){Pause();Say("Preview: "+err);}};
         Style=(Style)FindResource(typeof(Window));
         var file=new FileInfo(path);
-        FileTitle.Text=Home.ClipTitle(path);FileTitle.ToolTip=path;
+        FileTitle.Text=Home.ClipTitle(path);FileTitle.ToolTip=path;Title="Moments · "+FileTitle.Text;
         SourcePath.Text=Path.GetRelativePath(Home.Root,path);SourcePath.ToolTip=path;
         CreatedText.Text=file.CreationTime.ToString("dd.MM.yyyy   HH:mm");FileSizeText.Text=$"{file.Length/1048576d:0.##} MB";
         OutputName.Text=FileTitle.Text[..Math.Min(70,FileTitle.Text.Length)]+" · edit";FormatBox.ItemsSource=new[]{"MP4 · H.264","MKV · H.264","WebM · VP9"};FormatBox.SelectedIndex=0;ExportButton.IsEnabled=false;
@@ -58,7 +61,7 @@ public partial class Editor : Window
             }
             life.Token.ThrowIfCancellationRequested();ready=true;Seek(0);Say("Ready. Press Space to play, or A and B to set markers.");timer.Start();
         }catch(OperationCanceledException){}catch(Exception ex){Say(ex.Message);Home.Log(ex.ToString());}
-        finally{ExportButton.IsEnabled=info!=null && !closing;}
+        finally{ExportButton.IsEnabled=info!=null && !closing;UpdateSendButtons();}
     }
     async void CloseEditor(object? sender,CancelEventArgs e)
     {
@@ -68,7 +71,24 @@ public partial class Editor : Window
         finally{foreach(var p in stems.Values)p.Player.Close();Home.Clear(folder);life.Dispose();canClose=true;_=Dispatcher.BeginInvoke(Close);}
     }
     void PlayClick(object s,RoutedEventArgs e)=>TogglePlay();
-    void AssemblyClick(object s,RoutedEventArgs e){Pause();new AssemblyWindow(path){Owner=this}.ShowDialog();}
+    void UpdateSendButtons(){SourceToTimelineButton.IsEnabled=SelectionToTimelineButton.IsEnabled=ready && !closing && !sending;}
+    async void AssemblyClick(object s,RoutedEventArgs e)=>await SendToTimeline(false);
+    async void SelectionClick(object s,RoutedEventArgs e)=>await SendToTimeline(true);
+    internal async Task SendToTimeline(bool selection){
+        if(!ready || info==null || closing || sending)return;
+        Interval[]? ranges=null;int[]? streams=null;
+        if(selection){
+            double lo=Math.Min(a,b),hi=Math.Max(a,b);
+            ranges=Media.Kept(info.Duration,cuts).Select(r=>new Interval(Math.Max(lo,r.Start),Math.Min(hi,r.End))).Where(r=>r.End>r.Start).ToArray();
+            if(ranges.Length==0){Say("Select a kept range between A and B.");return;}
+            streams=stems.Where(kv=>kv.Value.Box.IsChecked==true).Select(kv=>kv.Key.Index).ToArray();
+        }
+        sending=true;UpdateSendButtons();Pause();
+        try{await workspace.Append(path,ranges,streams);if(!closing)Say(selection?"Selected range added to the current montage.":"Source added to the current montage.");}
+        catch(OperationCanceledException){if(!closing)Say("The video editor was closed; the selection was not added.");}
+        catch(Exception ex){if(!closing)Say(ex.Message);Home.Log("Send to montage: "+ex);}
+        finally{sending=false;if(!closing)UpdateSendButtons();}
+    }
     void TogglePlay()
     {
         if(!ready || info==null)return;if(playing){Pause();return;}
@@ -131,6 +151,7 @@ public partial class Editor : Window
             var ext=new[]{"mp4","mkv","webm"}[FormatBox.SelectedIndex];
             var file=await Media.Export(path,OutputName.Text,ext,Media.Kept(info!.Duration,cuts),stems.Where(kv=>kv.Value.Box.IsChecked==true).Select(kv=>kv.Key).ToArray(),(i,count)=>Say($"Exporting · segment {i+1} of {count}…"),token);
             Say("Saved to library · "+Path.GetFileName(file));
+            workspace.NotifyLibraryChanged();
         }catch(OperationCanceledException){Say("Export canceled.");}catch(Exception ex){Home.Log(ex.ToString());Say(ex.Message);}
     }
 }

@@ -46,16 +46,18 @@ internal static class FeatureUiChecks
         await Proc.Run("ffmpeg",["-v","error","-y","-f","lavfi","-i","testsrc2=size=640x360:rate=10","-t","0.3","-c:v","libx264","-preset","ultrafast",source]);
         for(int i=2;i<=8;i++)File.Copy(source,Path.Combine(Home.Videos,$"sample {i:00} — a longer recording name for layout.mp4"));
         File.SetCreationTime(source,DateTime.Now.AddDays(-1));
-        ClipEvents.Write(source,0,.3,[new("1","Pentakill",120,.1,.1)]);
+        ClipEvents.Write(source,0,.3,[new("1","My kills",120,.01,.01),new("2","My kills",120,.02,.02),new("3","Double kill",120,.1,.1),new("4","Triple kill",120,.2,.2)]);
         var releases=new FakeReleases{Tag="v9.0.0",Delay=150};
         var installer=new FakeInstaller();bool restart=false;
         var window=new MainWindow(new UpdateService(new HttpClient(releases)),installer,()=>restart=true);window.Show();await Layout(window);
         Click(window,"LibraryNav");await Layout(window);
         Require(Cards(window).Count()==8,"List view lost recordings");
+        Require(Cards(window).Any(c=>Text(c).Contains("Kill ×2")&&Text(c).Contains("Double kill")&&Text(c).Contains("Triple kill")),"list event labels missing");
         // Let real thumbnail generation finish before rendering the preview.
         await Thumbnails(window);await Layout(window);Shot(window,Path.Combine(reportDirectory,"library-list.png"));
         Click(window,"TilesViewButton");await Layout(window);
         Require(Cards(window).Count()==8 && Settings.Load().LibraryTiles,"tile switch/persistence");
+        Require(Cards(window).Any(c=>Text(c).Contains("Kill ×2")&&Text(c).Contains("Triple kill")),"tile event labels missing");
         Require(Find<StackPanel>(window,"ClipList").Children.OfType<WrapPanel>().Count()==2,"tile date grouping");
         await Thumbnails(window);Shot(window,Path.Combine(reportDirectory,"library-tiles.png"));
         window.Width=850;window.Height=590;await Layout(window);
@@ -104,8 +106,12 @@ internal static class FeatureUiChecks
         Require(restart && installer.Prepared==2 && installer.Launched==2,"one-click update did not prepare, hand off and request restart");
         Require(!Find<Button>(window,"DownloadUpdateButton").IsEnabled,"double install allowed after handoff");
         note("Updates UI: one-click download/prepare/restart, recording/replay/busy/editor guards, installation failure/retry, progress/cancel, current-version and network errors passed.");
-        note("List/tiles: identical recordings, date groups, filter, empty state, minimum window size and persisted view. All 13 event settings, persistence and enable/disable binding passed.");
+        note("List/tiles: event type badges/counts, identical recordings, date groups, filter, empty state, minimum window size and persisted view. All 13 event settings, persistence and enable/disable binding passed.");
         // The surrounding test Application shuts down all windows after PASS.
+    }
+    static string Text(DependencyObject root){
+        string result=root is TextBlock text?text.Text:"";
+        for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++)result+=" "+Text(VisualTreeHelper.GetChild(root,i));return result;
     }
     sealed class FakeInstaller:IUpdateInstaller{
         public int Prepared,Launched;public bool Fail=true;

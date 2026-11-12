@@ -18,7 +18,7 @@ public partial class MainWindow
         if(!initialized || !cfg.LibraryTiles)return;
         double width=LibraryLayout.TileWidth(ClipList.ActualWidth);
         foreach(var wrap in ClipList.Children.OfType<WrapPanel>())foreach(var button in wrap.Children.OfType<Button>()){
-            button.Width=width;button.Height=(width-18)*9/16+108;
+            button.Width=width;button.Height=double.NaN;button.MinHeight=(width-18)*9/16+108;
             if(button.Content is StackPanel stack && stack.Children[0] is Border preview)preview.Height=(width-18)*9/16;
         }
     }
@@ -34,9 +34,15 @@ public partial class MainWindow
             TextWrapping=tiles?TextWrapping.Wrap:TextWrapping.NoWrap,MaxHeight=tiles?42:24});
         words.Children.Add(new TextBlock{Text=$"{file.CreationTime:HH:mm}   ·   {file.Extension[1..].ToUpperInvariant()}   ·   {file.Length/1048576d:0.#} MB",Style=(Style)FindResource("Sub"),FontSize=12});
         var markers=ClipEvents.Read(file.FullName);
-        if(markers?.Events?.Length>0)words.Children.Add(new TextBlock{Text=$"AUTO · LoL · {markers.Events.Length} events",Foreground=BrushOf("#B7F59B"),FontSize=11,Margin=new Thickness(0,4,0,0)});
+        var tags=LibraryLayout.EventTags(markers);
+        if(tags.Length>0){
+            var badges=new WrapPanel{Tag="EventTags",Margin=new Thickness(0,5,0,0),ToolTip=markers!.Game+" · saved events"};
+            foreach(var tag in tags)badges.Children.Add(new Border{CornerRadius=new CornerRadius(4),Background=BrushOf("#304338"),Padding=new Thickness(6,2,6,2),Margin=new Thickness(0,0,5,4),
+                Child=new TextBlock{Text=tag.Label+(tag.Count>1?$" ×{tag.Count}":""),Foreground=BrushOf("#B7F59B"),FontSize=11},ToolTip=$"{tag.Label}: {tag.Count} saved events"});
+            words.Children.Add(badges);
+        }
         if(tiles){
-            button.Width=width;button.Height=(width-18)*9/16+108;preview.Height=(width-18)*9/16;
+            button.Width=width;button.MinHeight=(width-18)*9/16+108;preview.Height=(width-18)*9/16;
             var stack=new StackPanel();stack.Children.Add(preview);words.Margin=new Thickness(2,9,2,3);stack.Children.Add(words);
             button.Content=stack;
         }else{
@@ -45,7 +51,7 @@ public partial class MainWindow
             Grid.SetColumn(words,1);grid.Children.Add(words);
             var edit=new TextBlock{Text="Edit  ›",Margin=new Thickness(10,0,5,0)};Grid.SetColumn(edit,2);grid.Children.Add(edit);button.Content=grid;
         }
-        button.Click+=(_,_)=>{if(installingUpdate || updateHandedOff)return;new Editor(file.FullName){Owner=this}.ShowDialog();LoadLibrary();};return button;
+        button.Click+=(_,_)=>{if(quitting || installingUpdate || updateHandedOff)return;Editing.OpenClip(file.FullName);};return button;
     }
     async void LoadLibrary()
     {

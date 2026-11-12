@@ -28,6 +28,7 @@ public sealed class MontageChecks : Application
     protected override async void OnStartup(StartupEventArgs args){
         report=args.Args[0];File.WriteAllText(report,"");Home.Init();Theme.Install();
         try{
+            if(args.Args.Length>1 && args.Args[1]=="editing"){await EditingChecks.Run(Note,Path.GetDirectoryName(report)!);Note("PASS");Shutdown(0);return;}
             if(args.Args.Length>1 && args.Args[1]=="cadence"){await VideoCadenceChecks.Run(Note);Note("PASS");Shutdown(0);return;}
             if(args.Args.Length>1 && args.Args[1]=="sync"){await AvSyncChecks.Run(Note);Note("PASS");Shutdown(0);return;}
             if(args.Args.Length>1 && args.Args[1]=="features"){await FeatureUiChecks.Run(Note,Path.GetDirectoryName(report)!);Note("PASS");Shutdown(0);return;}

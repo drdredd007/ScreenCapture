@@ -13,6 +13,7 @@ public partial class MainWindow : Window
     readonly Settings cfg=Settings.Load();
     readonly DispatcherTimer timer=new(){Interval=TimeSpan.FromSeconds(1)};
     readonly SemaphoreSlim gate=new(1,1);
+    internal readonly EditingWorkspace Editing=new();
     readonly Forms.NotifyIcon tray=new();
     readonly EventWaitHandle showEvent=new(false,EventResetMode.AutoReset,@"Local\MomentsStudio_Show");
     RegisteredWaitHandle? waiter;
@@ -29,6 +30,8 @@ public partial class MainWindow : Window
     internal MainWindow(UpdateService updates,IUpdateInstaller? installer=null,Action? restart=null)
     {
         updateService=updates;updateInstaller=installer??new UpdateInstaller();restartForUpdate=restart??Close;InitializeComponent();InitializeUpdates();
+        Editing.LibraryChanged+=()=>{if(!quitting && page==1)LoadLibrary();};
+        Editing.WindowsChanged+=()=>{if(!quitting)UpdateButtons(updateCancel!=null);};
         Style=(Style)FindResource(typeof(Window));
         Quality.ItemsSource=Profile.All;Quality.SelectedIndex=cfg.Quality;
         LengthBox.ItemsSource=new[]{"5 minutes","10 minutes"};LengthBox.SelectedIndex=cfg.Minutes==10?1:0;
@@ -62,6 +65,7 @@ public partial class MainWindow : Window
     async void OnClosing(object? s,CancelEventArgs e)
     {
         if(closed)return;e.Cancel=true;if(quitting)return;quitting=true;timer.Stop();lolTimer.Stop();lolLife.Cancel();await StopUpdates();Message("Finishing recording…");
+        await Editing.CloseAll();
         await gate.WaitAsync();try{if(capture!=null)await StopCapture();}catch(Exception ex){Home.Log(ex.ToString());}
         finally{StopListening();Native.UnregisterHotKey(hwnd,hotkeyId);waiter?.Unregister(null);showEvent.Dispose();lolClient.Dispose();tray.Visible=false;tray.Dispose();closed=true;gate.Release();_=Dispatcher.BeginInvoke(()=>System.Windows.Application.Current.Shutdown());}
     }
@@ -171,8 +175,8 @@ public partial class MainWindow : Window
     void NavClick(object s,RoutedEventArgs e)=>ShowPage(int.Parse((string)((Button)s).Tag));
     void GamesClick(object s,RoutedEventArgs e)=>ShowPage(2);
     void AssemblyClick(object s,RoutedEventArgs e){
-        if(installingUpdate || updateHandedOff)return;
-        new AssemblyWindow{Owner=this}.ShowDialog();if(page==1)LoadLibrary();
+        if(quitting || installingUpdate || updateHandedOff)return;
+        try{Editing.OpenTimeline();}catch(Exception ex){Message(ex.Message);}
     }
     void ShowPage(int n){
         page=n;PageTitle.Text=new[]{"Capture","Library","Settings"}[n];
