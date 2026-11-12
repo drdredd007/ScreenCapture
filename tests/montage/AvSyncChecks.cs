@@ -25,6 +25,7 @@ internal static class AvSyncChecks
                 var archive=AppAudioArchive.Create(dir,true,"Fixture");
                 string pcm=Path.Combine(dir,"source.pcm");
                 using(var writer=new BinaryWriter(File.Create(pcm))){
+                    writer.Write(AudioPipeFormat.Header());
                     var block=new int[960];
                     for(int first=0;first<6*48000;first+=480){
                         for(int i=0;i<480;i++){
@@ -45,7 +46,7 @@ internal static class AvSyncChecks
                 if(corrected)video+=","+epoch.VideoFilter;
                 string audioGraph="[0:a]asplit=2[s][m];[s]pan=stereo|c0=c0|c1=c1[sys];[m]pan=stereo|c0=c2|c1=c3[mic]";
                 string raw=Path.Combine(dir,"take.mkv");
-                var args=new List<string>{"-v","error","-y","-f","s16le","-ar","48000","-ac","4","-i",pcm};
+                var args=new List<string>{"-v","error","-y"};args.AddRange(AudioPipeFormat.InputArguments(pcm));
                 CaptureGraphs.Add(args,video+"[v]",audioGraph);
                 args.AddRange(["-map","[v]","-map","[sys]","-map","[mic]","-t","6",
                     "-c:v","libx264","-preset","ultrafast","-bf","0","-g","60","-r","30","-fps_mode","cfr",

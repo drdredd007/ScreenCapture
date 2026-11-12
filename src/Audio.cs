@@ -31,10 +31,11 @@ internal sealed partial class AudioFeed : IDisposable
             Epoch=new CaptureEpoch();
             ready.TrySetResult();
             pipe.WaitForConnectionAsync(stop.Token).GetAwaiter().GetResult();
+            pipe.WriteAsync(AudioPipeFormat.Header(),stop.Token).GetAwaiter().GetResult();
             using var output=new BufferedAudioOutput(pipe,stop.Token);
             speakers?.Start();microphone?.Start();isolated?.Start();
             long sampleZero=Epoch.SampleZero;
-            short[] frame=new short[480*4];
+            short[] frame=new short[AudioPipeFormat.FramesPerBlock*AudioPipeFormat.Channels];
             byte[] bytes=new byte[frame.Length*2];
             long next=0;
             while(!stop.IsCancellationRequested)

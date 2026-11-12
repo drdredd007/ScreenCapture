@@ -24,19 +24,22 @@ internal static class VideoCadenceChecks
         var feed=Task.Run(async()=>{
             await pipe.WaitForConnectionAsync(cancel.Token);var clock=Stopwatch.StartNew();byte[] pcm=new byte[3840];
             try{
+                if(independent)await pipe.WriteAsync(AudioPipeFormat.Header(),cancel.Token);
                 for(int i=0;!cancel.IsCancellationRequested;i++){
                     await pipe.WriteAsync(pcm,cancel.Token);
                     double delay=(i+1)*10-clock.Elapsed.TotalMilliseconds;
                     if(delay>0)await Task.Delay(TimeSpan.FromMilliseconds(delay),cancel.Token);
                 }
-            }catch(IOException){}catch(OperationCanceledException){}
+            }catch(IOException){}catch(OperationCanceledException){}catch(ObjectDisposedException) when(cancel.IsCancellationRequested){}
         });
         // Encode wall-clock frame identifiers. A nominal 60-fps source stalled
         // by audio catches up in bursts and repeats these IDs; a metadata-only
         // FPS check would miss this. Discard startup/tail when counting changes.
         string video="color=black:size=32x32:rate=60,realtime,geq=lum='mod(floor(time(0)*60),220)+16':cb=128:cr=128[v]";
         string audio="[0:a]pan=stereo|c0=c0|c1=c1[a]";
-        List<string> args=["-v","error","-y","-f","s16le","-ar","48000","-ac","4","-probesize","32","-analyzeduration","0","-i",@"\\.\pipe\"+name];
+        List<string> args=["-v","error","-y"];
+        if(independent)args.AddRange(AudioPipeFormat.InputArguments(@"\\.\pipe\"+name));
+        else args.AddRange(["-f","s16le","-ar","48000","-ac","4","-probesize","32","-analyzeduration","0","-i",@"\\.\pipe\"+name]);
         if(independent)CaptureGraphs.Add(args,video,audio);else args.AddRange(["-filter_complex",video+";"+audio]);
         args.AddRange(["-map","[v]","-map","[a]","-t","5","-c:v","libx264","-crf","0","-preset","ultrafast","-bf","0","-r","60","-fps_mode","cfr","-c:a","aac",file]);
         try{await Proc.Run("ffmpeg",args,cancel.Token);}

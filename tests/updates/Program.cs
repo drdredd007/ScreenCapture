@@ -6,7 +6,7 @@ static class Checks
 {
     static int count;
     static void Require(bool ok,string why){count++;if(!ok)throw new Exception(why);}
-    static async Task Reject(Func<Task> work,string why){bool failed=false;try{await work();}catch(Exception ex) when(ex is IOException or OperationCanceledException or HttpRequestException){failed=true;}Require(failed,why);}
+    static async Task Reject(Func<Task> work,string why){bool failed=false;try{await work();}catch(Exception ex) when(ex is IOException or InvalidDataException or OperationCanceledException or HttpRequestException){failed=true;}Require(failed,why);}
     public static async Task Main(){
         string folder=Path.Combine(Path.GetTempPath(),"moments_update_"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(folder);
         try{

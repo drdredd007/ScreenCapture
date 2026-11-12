@@ -44,7 +44,7 @@ internal sealed class Capture
             List<string> args=["-hide_banner","-loglevel","warning","-nostats","-stats_period","0.25","-progress","pipe:1","-y"];
             if(system||mic){
                 audio=new AudioFeed(system,mic,apps);await audio.Ready.WaitAsync(TimeSpan.FromSeconds(15));
-                args.AddRange(["-f","s16le","-ar","48000","-ac","4","-probesize","32","-analyzeduration","0","-i",audio.PathName]);
+                args.AddRange(AudioPipeFormat.InputArguments(audio.PathName));
             }
             var epoch=audio?.Epoch??new CaptureEpoch();Clock=epoch.Clock;
             var full=Source.Bounds;var area=Source.Region??full;
