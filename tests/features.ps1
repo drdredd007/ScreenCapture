@@ -12,3 +12,6 @@ if ($LASTEXITCODE) { throw 'Feature UI tests failed' }
 
 & "$qa/Moments.MontageTests.exe" "$root/build/av-sync-verification.txt" sync
 if ($LASTEXITCODE) { throw 'A/V synchronization tests failed' }
+
+& "$qa/Moments.MontageTests.exe" "$root/build/video-cadence-verification.txt" cadence
+if ($LASTEXITCODE) { throw 'Live video cadence tests failed' }
