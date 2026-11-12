@@ -26,9 +26,9 @@ public partial class MainWindow : Window
     bool replayQueued;
     static Brush BrushOf(string s)=>(Brush)new BrushConverter().ConvertFromString(s)!;
     public MainWindow():this(new UpdateService()){}
-    internal MainWindow(UpdateService updates)
+    internal MainWindow(UpdateService updates,IUpdateInstaller? installer=null,Action? restart=null)
     {
-        updateService=updates;InitializeComponent();InitializeUpdates();
+        updateService=updates;updateInstaller=installer??new UpdateInstaller();restartForUpdate=restart??Close;InitializeComponent();InitializeUpdates();
         Style=(Style)FindResource(typeof(Window));
         Quality.ItemsSource=Profile.All;Quality.SelectedIndex=cfg.Quality;
         LengthBox.ItemsSource=new[]{"5 minutes","10 minutes"};LengthBox.SelectedIndex=cfg.Minutes==10?1:0;
@@ -55,7 +55,7 @@ public partial class MainWindow : Window
     void Message(string msg,bool popup=false){Notice.Text=msg;Notice.ToolTip=msg;if(popup&&!IsActive){tray.BalloonTipTitle="Moments";tray.BalloonTipText=msg;tray.ShowBalloonTip(3000);}}
     async Task Guard(Func<Task> action)
     {
-        if(quitting || !await gate.WaitAsync(0)){return;}
+        if(quitting || installingUpdate || updateHandedOff || !await gate.WaitAsync(0)){return;}
         try{await action();}catch(Exception ex){Home.Log(ex.ToString());Message(ex.Message,true);}
         finally{gate.Release();UpdateState();}
     }
@@ -75,7 +75,7 @@ public partial class MainWindow : Window
     }
     async void ReplayPress(string source){
         long now=Environment.TickCount64;
-        if(quitting || replayQueued || now-lastReplayPress<180)return;
+        if(quitting || installingUpdate || updateHandedOff || replayQueued || now-lastReplayPress<180)return;
         lastReplayPress=now;replayQueued=true;var session=capture;
         await gate.WaitAsync();
         try{if(!quitting && ReferenceEquals(session,capture)){Home.Log("Replay shortcut: "+source);await SaveCurrentReplay();}}
@@ -85,7 +85,7 @@ public partial class MainWindow : Window
     async void Tick(object? s,EventArgs e)
     {
         UpdateState();
-        if(quitting || gate.CurrentCount==0)return;
+        if(quitting || installingUpdate || updateHandedOff || gate.CurrentCount==0)return;
         await Guard(async()=>{
             if(capture!=null){
                 string? reason=capture.Failure;
@@ -157,6 +157,7 @@ public partial class MainWindow : Window
     void UpdateState()
     {
         if(!initialized)return;
+        UpdateButtons(updateCancel!=null);
         var c=capture;DiskLabel.Text=$"Drive {Path.GetPathRoot(Home.Root)!.TrimEnd('\\')}   ·   {Home.Free/1073741824d:0.0} GiB";
         StateText.Text=c==null?"●  Idle":(c.Replay?"●  Buffer   ":"●  Recording   ")+Home.Time(c.Clock.Elapsed.TotalSeconds);
         RecordButton.Content=c==null?"●   Start recording":c.Replay?"Start manual recording":"■   Stop";
@@ -170,6 +171,7 @@ public partial class MainWindow : Window
     void NavClick(object s,RoutedEventArgs e)=>ShowPage(int.Parse((string)((Button)s).Tag));
     void GamesClick(object s,RoutedEventArgs e)=>ShowPage(2);
     void AssemblyClick(object s,RoutedEventArgs e){
+        if(installingUpdate || updateHandedOff)return;
         new AssemblyWindow{Owner=this}.ShowDialog();if(page==1)LoadLibrary();
     }
     void ShowPage(int n){

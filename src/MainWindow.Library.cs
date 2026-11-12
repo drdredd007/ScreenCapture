@@ -45,7 +45,7 @@ public partial class MainWindow
             Grid.SetColumn(words,1);grid.Children.Add(words);
             var edit=new TextBlock{Text="Edit  ›",Margin=new Thickness(10,0,5,0)};Grid.SetColumn(edit,2);grid.Children.Add(edit);button.Content=grid;
         }
-        button.Click+=(_,_)=>{new Editor(file.FullName){Owner=this}.ShowDialog();LoadLibrary();};return button;
+        button.Click+=(_,_)=>{if(installingUpdate || updateHandedOff)return;new Editor(file.FullName){Owner=this}.ShowDialog();LoadLibrary();};return button;
     }
     async void LoadLibrary()
     {

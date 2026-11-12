@@ -48,7 +48,8 @@ internal static class FeatureUiChecks
         File.SetCreationTime(source,DateTime.Now.AddDays(-1));
         ClipEvents.Write(source,0,.3,[new("1","Pentakill",120,.1,.1)]);
         var releases=new FakeReleases{Tag="v9.0.0",Delay=150};
-        var window=new MainWindow(new UpdateService(new HttpClient(releases)));window.Show();await Layout(window);
+        var installer=new FakeInstaller();bool restart=false;
+        var window=new MainWindow(new UpdateService(new HttpClient(releases)),installer,()=>restart=true);window.Show();await Layout(window);
         Click(window,"LibraryNav");await Layout(window);
         Require(Cards(window).Count()==8,"List view lost recordings");
         // Let real thumbnail generation finish before rendering the preview.
@@ -78,8 +79,16 @@ internal static class FeatureUiChecks
         Click(window,"CheckUpdateButton");
         Require(!Find<Button>(window,"CheckUpdateButton").IsEnabled && Find<Button>(window,"CancelUpdateButton").Visibility==Visibility.Visible,"loading/cancel state");
         await Ready(window);Require(Find<Button>(window,"DownloadUpdateButton").IsEnabled,"new update did not enable download");
+        using(var reservation=new GateReservation(window)){
+            Click(window,"DownloadUpdateButton");Require(installer.Prepared==0,"update ignored busy capture gate");
+        }
+        var captureField=typeof(MainWindow).GetField("capture",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic)!;
+        var dummy=new Capture(new Target(0,"test",new System.Drawing.Rectangle(0,0,100,100),false),Profile.All[0],false,false,true,5,"test");
+        captureField.SetValue(window,dummy);Click(window,"DownloadUpdateButton");Require(installer.Prepared==0,"update interrupted replay capture");captureField.SetValue(window,null);Home.Clear(dummy.Folder);
+        var editor=new Window{Owner=window};editor.Show();Click(window,"DownloadUpdateButton");Require(installer.Prepared==0,"update closed an open editor");editor.Close();
         Click(window,"DownloadUpdateButton");await Ready(window);
         Require(Find<Button>(window,"OpenUpdateButton").Visibility==Visibility.Visible && File.ReadAllBytes(Path.Combine(Home.Root,"Updates",releases.Name)).SequenceEqual(releases.Bytes),"verified ZIP/open folder state");
+        Require(installer.Prepared==1 && !restart && Find<TextBlock>(window,"UpdateStatus").Text.Contains("installer test failure"),"installer failure closed Moments or hid error");
         window.Width=850;window.Height=590;Find<Border>(window,"UpdatesCard").BringIntoView();await Layout(window);
         Shot(window,Path.Combine(reportDirectory,"updates-settings.png"));
         releases.Tag="v"+UpdateService.Current;Click(window,"CheckUpdateButton");await Ready(window);
@@ -88,8 +97,23 @@ internal static class FeatureUiChecks
         Require(!Find<Button>(window,"DownloadUpdateButton").IsEnabled && Find<TextBlock>(window,"UpdateStatus").Text.Contains("limiting"),"network failure state");
         releases.Status=HttpStatusCode.OK;releases.Delay=5000;Click(window,"CheckUpdateButton");Click(window,"CancelUpdateButton");await Ready(window);
         Require(Find<TextBlock>(window,"UpdateStatus").Text.Contains("canceled"),"update cancellation state");
-        note("Updates UI: installed version, check/download actions, progress/cancel, verified archive, open-folder state, current-version and network errors passed.");
+        releases.Delay=10;releases.Tag="v9.0.0";Click(window,"CheckUpdateButton");await Ready(window);
+        installer.Fail=false;Click(window,"DownloadUpdateButton");
+        for(int i=0;i<100 && !restart;i++)await Task.Delay(50);
+        Require(restart && installer.Prepared==2 && installer.Launched==2,"one-click update did not prepare, hand off and request restart");
+        Require(!Find<Button>(window,"DownloadUpdateButton").IsEnabled,"double install allowed after handoff");
+        note("Updates UI: one-click download/prepare/restart, recording/replay/busy/editor guards, installation failure/retry, progress/cancel, current-version and network errors passed.");
         note("List/tiles: identical recordings, date groups, filter, empty state, minimum window size and persisted view. All 13 event settings, persistence and enable/disable binding passed.");
         // The surrounding test Application shuts down all windows after PASS.
+    }
+    sealed class FakeInstaller:IUpdateInstaller{
+        public int Prepared,Launched;public bool Fail=true;
+        public Task<string> Prepare(string archive,Version version,System.Threading.CancellationToken token){Require(File.Exists(archive),"installer received missing ZIP");Prepared++;return Task.FromResult("test-plan");}
+        public Task Launch(string plan,System.Threading.CancellationToken token){Launched++;return Fail?Task.FromException(new IOException("installer test failure")):Task.CompletedTask;}
+    }
+    sealed class GateReservation:IDisposable{
+        readonly System.Threading.SemaphoreSlim gate;
+        public GateReservation(MainWindow window){gate=(System.Threading.SemaphoreSlim)typeof(MainWindow).GetField("gate",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic)!.GetValue(window)!;Require(gate.Wait(0),"capture gate already busy");}
+        public void Dispose()=>gate.Release();
     }
 }
