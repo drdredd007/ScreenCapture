@@ -92,6 +92,7 @@ static class Checks
     public static async Task Main()
     {
         PacketContinuity();GapsAndStarts();await OutputBackpressure();await OutputLimits();
+        await StartupChecks.Run();
     }
 
     sealed class GatedStream : MemoryStream

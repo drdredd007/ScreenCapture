@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../src/AudioPipeFormat.cs" Link="AudioPipeFormat.cs" />
+    <Compile Include="../../src/CaptureStartup.cs" Link="CaptureStartup.cs" />
     <Compile Include="../../src/AudioPacketTimeline.cs" Link="AudioPacketTimeline.cs" />
     <Compile Include="../../src/BufferedAudioOutput.cs" Link="BufferedAudioOutput.cs" />
   </ItemGroup>

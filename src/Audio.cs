@@ -31,7 +31,7 @@ internal sealed partial class AudioFeed : IDisposable
             Epoch=new CaptureEpoch();
             ready.TrySetResult();
             pipe.WaitForConnectionAsync(stop.Token).GetAwaiter().GetResult();
-            pipe.WriteAsync(AudioPipeFormat.Header(),stop.Token).GetAwaiter().GetResult();
+            AudioPipeFormat.WriteHeader(pipe,stop.Token);
             using var output=new BufferedAudioOutput(pipe,stop.Token);
             speakers?.Start();microphone?.Start();isolated?.Start();
             long sampleZero=Epoch.SampleZero;
@@ -62,7 +62,7 @@ internal sealed partial class AudioFeed : IDisposable
     public void Dispose()
     {
         stop.Cancel();pipe.Dispose();
-        try{worker.GetAwaiter().GetResult();}catch(Exception ex){Home.Log("Audio: "+ex.Message);}
+        try{worker.GetAwaiter().GetResult();}catch(Exception ex){Home.Log("Audio: "+ex);}
         stop.Dispose();
     }
 
