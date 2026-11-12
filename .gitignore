@@ -18,3 +18,10 @@ obj/
 *.user
 *.suo
 *_wpftmp.csproj
+
+
+/Moments.Updater.exe
+/Moments.Updater.dll
+/Moments.Updater.deps.json
+/Moments.Updater.runtimeconfig.json
+/Updates/

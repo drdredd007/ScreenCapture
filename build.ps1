@@ -10,4 +10,8 @@ New-Item -ItemType Directory -Force $env:TEMP | Out-Null
 dotnet build src/Moments.csproj -c Release --disable-build-servers --configfile NuGet.Config -p:NuGetAudit=false
 if ($LASTEXITCODE) {exit $LASTEXITCODE}
 Copy-Item src/bin/Release/net10.0-windows/Moments.exe,src/bin/Release/net10.0-windows/Moments.dll,src/bin/Release/net10.0-windows/Moments.deps.json,src/bin/Release/net10.0-windows/Moments.runtimeconfig.json -Destination $PSScriptRoot
+dotnet build updater/Moments.Updater.csproj -c Release --disable-build-servers --configfile NuGet.Config -p:NuGetAudit=false
+if ($LASTEXITCODE) {exit $LASTEXITCODE}
+Copy-Item updater/bin/Release/net10.0-windows/Moments.Updater.exe,updater/bin/Release/net10.0-windows/Moments.Updater.dll,updater/bin/Release/net10.0-windows/Moments.Updater.deps.json,updater/bin/Release/net10.0-windows/Moments.Updater.runtimeconfig.json -Destination $PSScriptRoot
+
 

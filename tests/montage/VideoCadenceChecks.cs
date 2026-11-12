@@ -35,7 +35,11 @@ internal static class VideoCadenceChecks
         // Encode wall-clock frame identifiers. A nominal 60-fps source stalled
         // by audio catches up in bursts and repeats these IDs; a metadata-only
         // FPS check would miss this. Discard startup/tail when counting changes.
-        string video="color=black:size=32x32:rate=60,realtime,geq=lum='mod(floor(time(0)*60),220)+16':cb=128:cr=128[v]";
+        // Use half-frame clock bins. Quantizing at exactly the sampling rate
+        // mislabels ordinary +/- timer jitter around a bin edge as a duplicate
+        // even when two real frames are ~16 ms apart. Audio-induced catch-up
+        // bursts still repeat identifiers within the 8.3 ms bins.
+        string video="color=black:size=32x32:rate=60,realtime,geq=lum='mod(floor(time(0)*120),220)+16':cb=128:cr=128[v]";
         string audio="[0:a]pan=stereo|c0=c0|c1=c1[a]";
         List<string> args=["-v","error","-y"];
         if(independent)args.AddRange(AudioPipeFormat.InputArguments(@"\\.\pipe\"+name));

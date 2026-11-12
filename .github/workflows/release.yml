@@ -2,7 +2,7 @@ name: Windows build and release
 
 on:
   push:
-    branches: [main, codex/fix-audio-startup]
+    branches: [main, codex/one-click-updates]
   workflow_dispatch:
 
 permissions:
@@ -56,6 +56,10 @@ jobs:
           if ($LASTEXITCODE) { throw 'Update tests failed' }
       - name: Build Windows application
         run: ./build.ps1
+      - name: Update installation and restart regression tests
+        run: |
+          dotnet run --project tests/installer/InstallerTests.csproj -c Release -p:NuGetAudit=false -- "$PWD"
+          if ($LASTEXITCODE) { throw 'Update installer tests failed' }
       - name: Compile Windows integration tests
         run: |
           dotnet build tests/montage/MontageTests.csproj -c Release --configfile NuGet.Config -p:NuGetAudit=false
@@ -79,7 +83,7 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           $stage = 'build/package'
           New-Item -ItemType Directory -Force "$stage/tools", 'dist' | Out-Null
-          Copy-Item Moments.exe, Moments.dll, Moments.deps.json, Moments.runtimeconfig.json, README.md $stage
+          Copy-Item Moments.exe, Moments.dll, Moments.deps.json, Moments.runtimeconfig.json, Moments.Updater.exe, Moments.Updater.dll, Moments.Updater.deps.json, Moments.Updater.runtimeconfig.json, README.md $stage
           Copy-Item tools/ffmpeg.exe, tools/ffprobe.exe, tools/LICENSE, tools/README.txt "$stage/tools"
           $zip = "Moments-$version-win-x64.zip"
           Compress-Archive -Path "$stage/*" -DestinationPath "dist/$zip"
@@ -88,13 +92,13 @@ jobs:
           @"
           Moments $version for Windows 11 x64.
 
-          Fixes a recording startup regression introduced in 1.1.2: pending Windows audio-pipe header writes could fail with InvalidOperationException and leave capture waiting for a timeout. Audio startup now waits correctly and reports early audio failures immediately, retaining full error details in Moments.log. Preserves the independent video scheduling, shared A/V clock and GitHub update downloads from 1.1.2.
+          Adds Settings → Updates → Update and restart. The app downloads and verifies the release, prepares it outside the installation folder, exits, replaces program files, and restarts automatically. The updater backs up existing program files and rolls back if replacement or application startup fails. Recordings and settings are preserved. Stop recording/replay capture and close editors before installing.
 
-          NVIDIA users: the included FFmpeg requires NVENC API 13.1 (driver 610.00 or newer). If the log reports Required: 13.1 Found: 13.0, update the compatible NVIDIA driver and fully restart Moments; otherwise recording falls back to CPU x264.
+          Versions up to 1.1.3 need one final manual extraction to obtain this installer. Starting with 1.1.4, subsequent compatible releases install with the button. Installation requires a writable application folder; no administrator elevation is requested.
 
           Download **$zip**, extract the whole archive to a writable folder, and run **Moments.exe**. FFmpeg and FFprobe are included. Requires **.NET Desktop Runtime 10 x64**.
 
-          Validation: Windows Release build, deterministic pending-IValueTaskSource startup regression and cancellation tests, startup error propagation, audio continuity, LoL parser/scheduler, WPF settings/library, decoded flash/tone synchronization, live Windows named-pipe video cadence using the production header writer, and update download/integrity tests. GPU capture, WASAPI devices and live LoL delivery still require a real session on a Windows PC.
+          Validation: Windows Release builds, package path/duplicate/integrity checks, cancellation, locked-file and failed-startup rollback, real updater process handoff and restart, WPF update workflow and capture/editor guards, plus existing audio, LoL, A/V sync, live cadence and download checks.
 
           Source commit: $env:GITHUB_SHA
           SHA-256: $hash
