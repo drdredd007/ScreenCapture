@@ -9,3 +9,6 @@ dotnet build "$root/tests/montage/MontageTests.csproj" -c Release --configfile "
 if ($LASTEXITCODE) { throw 'Feature test build failed' }
 & "$qa/Moments.MontageTests.exe" "$root/build/features-verification.txt" features
 if ($LASTEXITCODE) { throw 'Feature UI tests failed' }
+
+& "$qa/Moments.MontageTests.exe" "$root/build/av-sync-verification.txt" sync
+if ($LASTEXITCODE) { throw 'A/V synchronization tests failed' }

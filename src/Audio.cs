@@ -13,6 +13,7 @@ internal sealed partial class AudioFeed : IDisposable
     readonly TaskCompletionSource ready=new(TaskCreationOptions.RunContinuationsAsynchronously);
     public Task Ready=>ready.Task;
     public Task Completion=>worker;
+    public CaptureEpoch Epoch {get;private set;}=null!;
     public string Name {get;}="moments_"+Guid.NewGuid().ToString("N");
     public string PathName=>@"\\.\pipe\"+Name;
     public AudioFeed(bool system,bool mic,AppAudioArchive? apps=null)
@@ -27,12 +28,12 @@ internal sealed partial class AudioFeed : IDisposable
             using var isolated=apps!=null?new AppInputs(apps,stop.Token):null;
             using var speakers=system && isolated==null?Endpoint.Open(true):null;
             using var microphone=mic?Endpoint.Open(false):null;
+            Epoch=new CaptureEpoch();
             ready.TrySetResult();
             pipe.WaitForConnectionAsync(stop.Token).GetAwaiter().GetResult();
             using var output=new BufferedAudioOutput(pipe,stop.Token);
             speakers?.Start();microphone?.Start();isolated?.Start();
-            long origin=Stopwatch.GetTimestamp();
-            long sampleZero=(long)(origin*(48000.0/Stopwatch.Frequency));
+            long sampleZero=Epoch.SampleZero;
             short[] frame=new short[480*4];
             byte[] bytes=new byte[frame.Length*2];
             long next=0;
@@ -40,7 +41,9 @@ internal sealed partial class AudioFeed : IDisposable
             {
                 output.Check();
                 speakers?.Poll(sampleZero,next);microphone?.Poll(sampleZero,next);isolated?.Poll(sampleZero,next);
-                long available=(long)((Stopwatch.GetTimestamp()-origin)*(48000.0/Stopwatch.Frequency))-3840;
+                // The 80 ms lookahead delays delivery, not PCM timestamps. Keep
+                // initial silence before WASAPI starts on the common timeline.
+                long available=Epoch.SamplesNow-3840;
                 while(next+480<=available && !stop.IsCancellationRequested)
                 {
                     for(int i=0;i<480;i++){
