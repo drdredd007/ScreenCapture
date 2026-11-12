@@ -1,0 +1,114 @@
+name: Windows build and release
+
+on:
+  push:
+    branches: [main, codex/fix-audio-continuity]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: moments-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Check media binaries
+        run: |
+          $expected = @{
+            'ffmpeg.exe' = '557e97af30a1c9b6dfbd08a1d2a04894279dd15a77d23b1723e560cc7f4fc90e'
+            'ffprobe.exe' = '11cb2352bac147bb8906f567af9af1da3779eca73e7a71a49a81c7d277e289cd'
+          }
+          foreach ($name in $expected.Keys) {
+            if ((Get-FileHash "tools/$name" -Algorithm SHA256).Hash -ne $expected[$name]) {
+              throw "Missing or unexpected Git LFS binary: $name"
+            }
+            & "./tools/$name" -version
+            if ($LASTEXITCODE) { throw "$name failed to start" }
+          }
+      - name: Audio continuity and encoder stall regression tests
+        run: |
+          dotnet run --project tests/audio-continuity/AudioContinuityTests.csproj -c Release -p:NuGetAudit=false
+          if ($LASTEXITCODE) { throw 'Audio continuity tests failed' }
+      - name: Build Windows application
+        run: ./build.ps1
+      - name: Compile Windows integration tests
+        run: |
+          dotnet build tests/montage/MontageTests.csproj -c Release --configfile NuGet.Config -p:NuGetAudit=false
+          if ($LASTEXITCODE) { throw 'Windows integration test build failed' }
+      - name: Package Windows x64
+        id: package
+        run: |
+          [xml]$project = Get-Content src/Moments.csproj
+          $version = [string]$project.Project.PropertyGroup.Version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid release version' }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          $stage = 'build/package'
+          New-Item -ItemType Directory -Force "$stage/tools", 'dist' | Out-Null
+          Copy-Item Moments.exe, Moments.dll, Moments.deps.json, Moments.runtimeconfig.json, README.md $stage
+          Copy-Item tools/ffmpeg.exe, tools/ffprobe.exe, tools/LICENSE, tools/README.txt "$stage/tools"
+          $zip = "Moments-$version-win-x64.zip"
+          Compress-Archive -Path "$stage/*" -DestinationPath "dist/$zip"
+          $hash = (Get-FileHash "dist/$zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $zip" | Set-Content "dist/$zip.sha256" -Encoding ascii
+          @"
+          Moments $version for Windows 11 x64.
+
+          Fixes audio packet overlap when WASAPI reports invalid timestamps, smooths packet timestamp jitter, and separates audio capture from a temporarily stalled video encoder.
+
+          Download **$zip**, extract the whole archive to a writable folder, and run **Moments.exe**. FFmpeg and FFprobe are included. Requires **.NET Desktop Runtime 10 x64**.
+
+          Validation: Windows Release build, deterministic PCM continuity and encoder-backpressure tests. Live device capture and listening tests still require a Windows PC with audio devices.
+
+          Source commit: $env:GITHUB_SHA
+          SHA-256: $hash
+          "@ | Set-Content dist/release-notes.md -Encoding utf8
+      - uses: actions/upload-artifact@v4
+        with:
+          name: moments-win-x64
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: moments-win-x64
+          path: dist
+      - name: Publish verified build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag="v$RELEASE_VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; keeping its files unchanged. Bump Version to publish another release."
+            exit 0
+          fi
+          gh release create "$tag" --target "$GITHUB_SHA" --title "Moments $RELEASE_VERSION" --notes-file dist/release-notes.md --draft dist/*.zip dist/*.sha256
+          gh release edit "$tag" --draft=false --latest

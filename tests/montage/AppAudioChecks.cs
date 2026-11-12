@@ -69,6 +69,20 @@ internal static class AppAudioChecks
         }
         return (Level(431),Level(991));
     }
+    static async Task Continuous(string file,Track track,double time,Action<string> note){
+        string pcm=Path.Combine(Home.Work,"continuity.s16");
+        await Proc.Run("ffmpeg",["-v","error","-y","-ss",Home.N(time),"-i",file,"-map","0:"+track.Index,"-t","1.5","-ar","48000","-ac","1","-f","s16le",pcm]);
+        var bytes=File.ReadAllBytes(pcm);Require(bytes.Length>=140000,"short continuity fixture");
+        var energy=new System.Collections.Generic.List<double>();
+        for(int offset=0;offset+480<=bytes.Length;offset+=480){
+            double sum=0;for(int i=offset;i<offset+480;i+=2){double v=BitConverter.ToInt16(bytes,i);sum+=v*v;}
+            energy.Add(Math.Sqrt(sum/240));
+        }
+        double median=energy.Order().ElementAt(energy.Count/2);
+        Require(median>5 && energy.Min()>median*.2,"audible dropouts in "+track.Name+": min/median="+energy.Min()+"/"+median);
+        note($"{track.Name}: no 5 ms energy dropouts in 1.5 s of continuous tone.");
+        File.Delete(pcm);
+    }
     public static async Task Run(Action<string> note){
         var game=Process.GetProcessesByName("ToneGame").First(p=>string.Equals(p.MainModule?.FileName,Path.Combine(Home.Root,"ToneGame.exe"),StringComparison.OrdinalIgnoreCase));
         Target? window=null;for(int i=0;i<50 && window==null;i++){window=Native.Windows(game.Id).FirstOrDefault();await Task.Delay(80);}
@@ -90,6 +104,7 @@ internal static class AppAudioChecks
             var g=await Levels(result!,gt,4);var c=await Levels(result!,ct,4);var early=await Levels(result!,ct,.6);
             note($"Simultaneous tones: game stem 431={g.Game:F2}, 991={g.Chat:F2}; chat stem 431={c.Game:F2}, 991={c.Chat:F2}; chat before launch {early.Chat:F2}.");
             Require(g.Game>15 && c.Chat>15 && g.Chat<Math.Max(2,c.Chat*(replay?.012:.04)) && c.Game<Math.Max(2,g.Game*.012) && early.Chat<2,"process isolation/timing failed");
+            await Continuous(result!,gt,3.5,note);await Continuous(result!,ct,3.5,note);
             if(!replay){
                 var late=await Levels(result!,ct,info.Duration-.8);Require(late.Chat<2,"chat continued after exit");
             }
@@ -111,3 +126,4 @@ internal static class AppAudioChecks
         game.Dispose();
     }
 }
+
