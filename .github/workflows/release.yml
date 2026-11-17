@@ -3,6 +3,8 @@ name: Windows build and release
 on:
   push:
     branches: [main, codex/independent-editing-projects]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -92,13 +94,9 @@ jobs:
           @"
           Moments $version for Windows 11 x64.
 
-          Clip previews and the montage editor now open as independent, nonmodal windows. Add A–B to timeline appends the kept selection and enabled audio tracks to the current montage; Add source reuses that same montage. Existing edits are preserved and each send can be undone in one step.
+          League of Legends auto-save now collects one match highlight reel with overlapping footage kept only once. Jump to a specific kill, multikill or objective from its library card. Manual hotkey replays still use the full configured buffer.
 
-          New project, Open project and Save project as store separate .moments projects, autosave edits in the active project, and reopen the last project. New projects preserve previous montages. Source videos remain separate files referenced by the project.
-
-          Library list and tiles now show saved event types (Kill, Double kill, Triple kill, etc.) with repeated-event counts. Version 1.1.4 users can install this release with Settings → Updates → Update and restart.
-
-          Audio preview uses decoded PCM WAV instead of the Windows AAC decoder. New multi-track files include a default AAC-LC stereo playback mix while retaining separate editable stems. Existing files can be re-exported for compatibility.
+          Updated capture, library and editor styling, with distinct event accents and visible keyboard focus.
 
           Download **$zip**, extract the whole archive to a writable folder, and run **Moments.exe**. FFmpeg and FFprobe are included. Requires **.NET Desktop Runtime 10 x64**.
 

@@ -10,6 +10,7 @@ public partial class Editor : Window
 {
     readonly string path,folder=Home.Temp("view");
     readonly EditingWorkspace workspace;
+    double initialPosition;
     bool sending;
     readonly CancellationTokenSource life=new();
     CancellationTokenSource? exporting;
@@ -22,10 +23,10 @@ public partial class Editor : Window
     bool internalMove,playing,ready,closing,canClose;
     double a,b,playStart;
     readonly Stopwatch playback=new();
-    internal Editor(string path,EditingWorkspace? workspace=null)
+    internal Editor(string path,EditingWorkspace? workspace=null,double start=0)
     {
         this.workspace=workspace??(Application.Current.MainWindow as MainWindow)?.Editing??new EditingWorkspace();
-        this.path=path;gameEvents=ClipEvents.Read(path)?.Events??[];InitializeComponent();
+        initialPosition=start;this.path=path;gameEvents=ClipEvents.Read(path)?.Events??[];InitializeComponent();
         Video.Failed+=err=>{if(!closing){Pause();Say("Preview: "+err);}};
         Style=(Style)FindResource(typeof(Window));
         var file=new FileInfo(path);
@@ -40,6 +41,13 @@ public partial class Editor : Window
             if(e.Key==System.Windows.Input.Key.A){SetA(this,new());e.Handled=true;}
             if(e.Key==System.Windows.Input.Key.B){SetB(this,new());e.Handled=true;}
         };
+    }
+    internal bool CanSeekFile(string file)=>!closing && string.Equals(path,file,StringComparison.OrdinalIgnoreCase);
+    internal void JumpTo(double seconds){
+        initialPosition=seconds;
+        if(info==null || closing)return;
+        if(ready){Pause();Seek(seconds);}
+        else{SetSlider(Math.Clamp(seconds,0,info.Duration));Video.Display(path,info,Timeline.Value,false);}
     }
     void Say(string msg){Feedback.Text=msg;Feedback.ToolTip=msg;}
     async Task Prepare()
@@ -63,12 +71,12 @@ public partial class Editor : Window
                 stems.Add(t,(player,box));
             }
             if(info.Tracks.Count==0)AudioPanel.Children.Add(new TextBlock{Text="No audio tracks",Style=(Style)FindResource("Sub")});
-            Video.Display(path,info,0,false);
+            SetSlider(Math.Clamp(initialPosition,0,info.Duration));Video.Display(path,info,Timeline.Value,false);
             foreach(var (track,stem) in stems){
                 var audio=await Media.PreviewAudio(path,track,folder,info.Duration,life.Token);
                 SetWaveform(track,audio.Peaks);stem.Player.Open(new Uri(audio.File));stem.Player.Pause();
             }
-            life.Token.ThrowIfCancellationRequested();ready=true;Seek(0);Say("Ready. Press Space to play, or A and B to set markers.");timer.Start();
+            life.Token.ThrowIfCancellationRequested();ready=true;Seek(initialPosition);Say("Ready. Press Space to play, or A and B to set markers.");timer.Start();
         }catch(OperationCanceledException){}catch(Exception ex){Say(ex.Message);Home.Log(ex.ToString());}
         finally{ExportButton.IsEnabled=info!=null && !closing;UpdateSendButtons();}
     }

@@ -42,11 +42,11 @@ internal static class FeatureUiChecks
     }
     public static async Task Run(Action<string> note,string reportDirectory){
         new Settings{Auto=false,LibraryTiles=false}.Save();
-        string source=Path.Combine(Home.Videos,"sample 01.mp4");
-        await Proc.Run("ffmpeg",["-v","error","-y","-f","lavfi","-i","testsrc2=size=640x360:rate=10","-t","0.3","-c:v","libx264","-preset","ultrafast",source]);
+        string source=Path.Combine(Home.Videos,"LoL · Match highlights.mp4");
+        await Proc.Run("ffmpeg",["-v","error","-y","-f","lavfi","-i","testsrc2=size=320x180:rate=5","-t","80","-c:v","libx264","-preset","ultrafast",source]);
         for(int i=2;i<=8;i++)File.Copy(source,Path.Combine(Home.Videos,$"sample {i:00} — a longer recording name for layout.mp4"));
         File.SetCreationTime(source,DateTime.Now.AddDays(-1));
-        ClipEvents.Write(source,0,.3,[new("1","My kills",120,.01,.01),new("2","My kills",120,.02,.02),new("3","Double kill",120,.1,.1),new("4","Triple kill",120,.2,.2)]);
+        ClipEvents.Write(source,0,80,[new("1","My kills",720,16,16),new("2","My kills",728,24,24),new("3","Double kill",728,24,24),new("4","Triple kill",1121,68,68)]);
         var releases=new FakeReleases{Tag="v9.0.0",Delay=150};
         var installer=new FakeInstaller();bool restart=false;
         var window=new MainWindow(new UpdateService(new HttpClient(releases)),installer,()=>restart=true);window.Show();await Layout(window);
@@ -64,8 +64,23 @@ internal static class FeatureUiChecks
         foreach(var wrap in Find<StackPanel>(window,"ClipList").Children.OfType<WrapPanel>())foreach(var card in wrap.Children.OfType<Button>())
             Require(card.ActualWidth<=wrap.ActualWidth && card.ActualHeight>100,"tile exceeds viewport or preview missing");
         Shot(window,Path.Combine(reportDirectory,"library-tiles-compact.png"));
-        Find<TextBox>(window,"Search").Text="sample 01";await Layout(window);Require(Cards(window).Count()==1,"tile search differs from list search");await Layout(window);Shot(window,Path.Combine(reportDirectory,"library-event-badges-tiles.png"));
+        Find<TextBox>(window,"Search").Text="Match highlights";await Layout(window);Require(Cards(window).Count()==1,"tile search differs from list search");await Layout(window);Shot(window,Path.Combine(reportDirectory,"library-event-badges-tiles.png"));
         Click(window,"ListViewButton");await Layout(window);Require(Cards(window).Count()==1 && !Settings.Load().LibraryTiles,"list switch lost filter or persistence");Shot(window,Path.Combine(reportDirectory,"library-event-badges-list.png"));
+        var triple=DescendantButtons(Cards(window).Single()).Single(b=>Text(b).Contains("Triple kill"));
+        triple.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        var preview=Application.Current.Windows.OfType<Editor>().Single();
+        for(int i=0;i<150 && !Find<Button>(preview,"SelectionToTimelineButton").IsEnabled;i++)await Task.Delay(50);
+        Require(Math.Abs(Find<Slider>(preview,"Timeline").Value-68)<.01,"library event opened at wrong time");
+        var secondMark=DescendantButtons(Cards(window).Single()).Single(b=>Text(b).Contains("Double kill"));
+        secondMark.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Require(Application.Current.Windows.OfType<Editor>().Single()==preview && Math.Abs(Find<Slider>(preview,"Timeline").Value-24)<.01,"second jump reopened the same clip");
+        var kills=DescendantButtons(Cards(window).Single()).Single(b=>Text(b).Contains("Kill ×2"));
+        kills.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        var choices=kills.ContextMenu.Items.OfType<MenuItem>().ToArray();
+        Require(choices.Length==2 && choices[0].Header.ToString()!.Contains("00:16") && choices[1].Header.ToString()!.Contains("00:24"),"repeated events did not expose distinct times");
+        choices[0].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));kills.ContextMenu.IsOpen=false;
+        Require(Math.Abs(Find<Slider>(preview,"Timeline").Value-16)<.01,"repeated event opened at wrong time");
+        preview.Close();for(int i=0;i<100 && preview.IsVisible;i++)await Task.Delay(50);
         Find<TextBox>(window,"Search").Text="does-not-exist";await Layout(window);Require(Cards(window).Count()==0,"empty search");
         window.Width=1090;window.Height=750;Click(window,"SettingsNav");await Layout(window);
         var options=Find<WrapPanel>(window,"LolEventOptions").Children.OfType<CheckBox>().ToArray();
@@ -108,6 +123,13 @@ internal static class FeatureUiChecks
         note("Updates UI: one-click download/prepare/restart, recording/replay/busy/editor guards, installation failure/retry, progress/cancel, current-version and network errors passed.");
         note("List/tiles: event type badges/counts, identical recordings, date groups, filter, empty state, minimum window size and persisted view. All 13 event settings, persistence and enable/disable binding passed.");
         // The surrounding test Application shuts down all windows after PASS.
+    }
+    static IEnumerable<Button> DescendantButtons(DependencyObject root){
+        for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++){
+            var child=VisualTreeHelper.GetChild(root,i);
+            if(child is Button button)yield return button;
+            foreach(var nested in DescendantButtons(child))yield return nested;
+        }
     }
     static string Text(DependencyObject root){
         string result=root is TextBlock text?text.Text:"";

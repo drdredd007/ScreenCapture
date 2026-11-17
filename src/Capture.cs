@@ -21,7 +21,7 @@ internal sealed class Capture
     public Capture(Target source,Profile profile,bool system,bool mic,bool replay,int minutes,string label,bool separateApps=false)
     {
         Source=source;this.profile=profile;this.system=system;this.mic=mic;this.separateApps=system && separateApps;Replay=replay;Minutes=minutes;Label=label;
-        Folder=Home.Temp(replay?"ring":"take");
+        Folder=Home.Temp(replay?"ring":"take");Highlights=new MatchReels(Folder);
     }
     static Task<bool>? gpu;
     static async Task<bool> TestGpu()
@@ -29,7 +29,14 @@ internal sealed class Capture
         try{await Proc.Run("ffmpeg",["-v","error","-f","lavfi","-i","color=size=640x360","-frames:v","1","-c:v","h264_nvenc","-f","null","-"]);return true;}
         catch(IOException ex){Home.Log("NVENC: "+ex.Message);return false;}
     }
-    public const int Segment=2;
+    public const int Segment=MatchHighlights.SegmentSeconds;
+    public MatchReels Highlights {get;}
+    double retryHighlightsAt;
+    public async Task<string?> PublishHighlights(){
+        if(Clock.Elapsed.TotalSeconds<retryHighlightsAt)return null;
+        try{return await Highlights.Publish(apps,false);}
+        catch{retryHighlightsAt=Clock.Elapsed.TotalSeconds+15;throw;}
+    }
     public async Task Start()
     {
         try{
@@ -99,9 +106,15 @@ internal sealed class Capture
     {
         if(!Replay)return;
         var files=Segments();
-        int remove=Math.Max(0,files.Length-Minutes*60/Segment-2);
-        foreach(var f in files.Take(remove))File.Delete(f);
-        if(remove>0)apps?.PruneBefore(int.Parse(Path.GetFileNameWithoutExtension(files[remove])));
+        if(files.Length==0)return;
+        Highlights.Checkpoint();
+        int earliest=Math.Max(0,int.Parse(Path.GetFileNameWithoutExtension(files[^1]))-Minutes*60/Segment-1);
+        foreach(string file in files){
+            int number=int.Parse(Path.GetFileNameWithoutExtension(file));
+            if(number>=earliest)break;
+            if(!Highlights.Reserved.Contains(number))File.Delete(file);
+        }
+        apps?.PruneBefore(earliest,Highlights.Reserved);
     }
     public async Task<string> SaveReplay()=>(await SaveReplayDetails()).File;
     public sealed record ReplayResult(string File,double Start,double Duration);
@@ -142,14 +155,20 @@ internal sealed class Capture
         }
         if(audio!=null){var a=audio;audio=null;await Task.Run(a.Dispose);}
     }
-    public async Task<string?> Stop(bool preserveReplay=false)
+    public async Task<string?> Stop()
     {
         await EndProcess();Clock.Stop();
         string raw=Path.Combine(Folder,"take.mkv");
-        if(Replay || !File.Exists(raw)||new FileInfo(raw).Length==0){
-            if(Replay && preserveReplay)File.WriteAllText(Path.Combine(Folder,"keep-replay.txt"),"An automatic replay could not be saved. These source segments are retained for recovery.");
-            else Home.Clear(Folder);return null;
+        if(Replay){
+            try{
+                var match=await Highlights.Publish(apps,true);
+                Home.Clear(Folder);return match;
+            }catch(Exception ex){
+                File.WriteAllText(Path.Combine(Folder,"keep-replay.txt"),"Match highlights pending recovery.");
+                throw new IOException("Match highlights retained for recovery in "+Folder+". "+ex.Message,ex);
+            }
         }
+        if(!File.Exists(raw)||new FileInfo(raw).Length==0){Home.Clear(Folder);return null;}
         string dest=Home.Unique(Home.Videos,Label,"mp4");
         string tmp=Path.Combine(Folder,"final.mp4");
         try{

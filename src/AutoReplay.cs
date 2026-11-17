@@ -2,23 +2,33 @@ using System.Text.Json;
 namespace Moments;
 
 internal sealed record ReplayEvent(string Id,string Label,double GameTime,double RecordingTime,double DetectedAt);
-internal sealed class AutoReplay
+// Segment numbers are on the capture clock. A sorted set makes both
+// overlapping event windows and repeated API snapshots safe to combine.
+internal sealed record MatchHighlights(string Output, int FirstSegment, ReplayEvent[] Events, int? EndSegment=null)
 {
-    public const double Delay=30;
-    readonly List<ReplayEvent> pending=[];
-    double retryAt;
-    public bool Pending=>pending.Count>0;
-    public void Reset(){pending.Clear();retryAt=0;}
-    public void Add(ReplayEvent item){if(!pending.Any(e=>e.Id==item.Id))pending.Add(item);}
-    public double DueAt(int minutes)=>!Pending?double.PositiveInfinity:Math.Max(retryAt,Math.Min(
-        pending.Max(e=>e.DetectedAt)+Delay,
-        // Leave 30 seconds for segment finalization/export before the first event expires.
-        pending.Min(e=>e.RecordingTime)+minutes*60-30));
-    // Scheduler and recording clocks both use elapsed seconds for this capture.
-    public bool Due(double now,int minutes)=>Pending && now>=DueAt(minutes);
-    public ReplayEvent[] Snapshot()=>pending.ToArray();
-    public void Saved(IEnumerable<ReplayEvent> batch){var ids=batch.Select(e=>e.Id).ToHashSet();pending.RemoveAll(e=>ids.Contains(e.Id));retryAt=0;}
-    public void Failed(double now){retryAt=now+5;}
+    internal const int SegmentSeconds=2, Before=30, After=15;
+
+    public int[] SelectedSegments(){
+        var selected=new SortedSet<int>();
+        foreach(var item in Events){
+            int first=Math.Max(FirstSegment,(int)Math.Floor((item.RecordingTime-Before)/SegmentSeconds));
+            int end=Math.Min(EndSegment??int.MaxValue,(int)Math.Ceiling((item.RecordingTime+After)/SegmentSeconds));
+            for(int n=first;n<end;n++)selected.Add(n);
+        }
+        return selected.ToArray();
+    }
+
+    public ClipEvent[] Chapters(int[] segments,double duration){
+        var result=new List<ClipEvent>();
+        foreach(var item in Events.DistinctBy(e=>e.Id).OrderBy(e=>e.RecordingTime)){
+            int segment=(int)Math.Floor(item.RecordingTime/SegmentSeconds);
+            int index=Array.BinarySearch(segments,segment);
+            if(index<0)continue;
+            double offset=index*SegmentSeconds+(item.RecordingTime-segment*SegmentSeconds);
+            if(offset<duration)result.Add(new(item.Label,offset,item.GameTime));
+        }
+        return result.ToArray();
+    }
 }
 internal sealed record ClipEvent(string Label,double Seconds,double GameTime);
 internal sealed record ClipEvents(string Game,ClipEvent[] Events)
@@ -31,8 +41,11 @@ internal sealed record ClipEvents(string Game,ClipEvent[] Events)
         var markers=events.Where(e=>e.RecordingTime>=start && e.RecordingTime<start+duration)
             .Select(e=>new ClipEvent(e.Label,e.RecordingTime-start,e.GameTime)).OrderBy(e=>e.Seconds).ToArray();
         if(markers.Length==0)return;
+        new ClipEvents("League of Legends",markers).Save(video);
+    }
+    public void Save(string video){
         string path=video+".events.json";
-        File.WriteAllText(path+".tmp",JsonSerializer.Serialize(new ClipEvents("League of Legends",markers),new JsonSerializerOptions{WriteIndented=true}));
+        File.WriteAllText(path+".tmp",JsonSerializer.Serialize(this,new JsonSerializerOptions{WriteIndented=true}));
         File.Move(path+".tmp",path,true);
     }
 }

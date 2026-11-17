@@ -38,22 +38,18 @@ static class Tests
         var restored=JsonSerializer.Deserialize<LolAutoSaveOptions>(JsonSerializer.Serialize(options))!;
         Check(!restored.Enabled && restored.Events==options.Events,"event settings roundtrip");
     }
-    static void Scheduling(){
-        foreach(int minutes in new[]{5,10}){
-            var schedule=new AutoReplay();Check(!schedule.Due(1000,minutes),"empty schedule");
-            var first=Mark("1",100);schedule.Add(first);Check(!schedule.Due(129.9,minutes) && schedule.Due(130,minutes),"30 second delay");
-            schedule.Add(Mark("2",120));Check(!schedule.Due(149.9,minutes) && schedule.Due(150,minutes),"new event must reset delay");
-            var batch=schedule.Snapshot();schedule.Add(Mark("3",151));schedule.Saved(batch);
-            Check(schedule.Pending && !schedule.Due(180.9,minutes) && schedule.Due(181,minutes),"save completion discarded event received during export");
-            schedule.Failed(181);Check(!schedule.Due(185.9,minutes) && schedule.Due(186,minutes),"retry after export failure");
-            schedule.Saved(schedule.Snapshot());Check(!schedule.Pending,"successful save left pending events");
-            schedule.Add(first);schedule.Add(first);Check(schedule.Snapshot().Length==1,"duplicate schedule event");
-            double deadline=100+minutes*60-30;
-            for(double at=120;at<deadline;at+=20)schedule.Add(Mark(at.ToString(),at));
-            Check(schedule.DueAt(minutes)==deadline && schedule.Due(deadline,minutes),"long fight must save before oldest event leaves buffer");
-            schedule.Reset();Check(!schedule.Pending,"disable/capture change reset");
-        }
-        var delayed=new AutoReplay();delayed.Add(Mark("late",100,140));Check(delayed.DueAt(5)==170,"delay must start on detection");
+    static void MatchWindows(){
+        // Kills at 60 and 70 share footage, the later fight at 180 is separate.
+        var reel=new MatchHighlights("test.mp4",0,[Mark("1",60),Mark("2",70),Mark("2",70),Mark("3",180)]);
+        int[] segments=reel.SelectedSegments();
+        Check(segments.SequenceEqual(Enumerable.Range(15,28).Concat(Enumerable.Range(75,23))),"overlap/gap or keyframe rounding");
+        var chapters=reel.Chapters(segments,segments.Length*2);
+        Check(chapters.Select(e=>e.Seconds).SequenceEqual(new double[]{30,40,86}),"chapter offsets or duplicate marker");
+        var clipped=reel with{FirstSegment=26,EndSegment=40};
+        Check(clipped.SelectedSegments().SequenceEqual(Enumerable.Range(26,14)),"match bounds");
+        Check(clipped.Chapters(clipped.SelectedSegments(),12).Single().GameTime==60,"partial final segment");
+        Check(LolEvents.Parse(Data(101,[Event(9,"GameEnd",100)])).GameOver,"end of match ignored");
+        Check(!LolEvents.Parse(Data(101,[])).GameOver,"ordinary snapshot closed the match");
     }
     static void MetadataAndLayout(){
         var tags=LibraryLayout.EventTags(new ClipEvents("League of Legends",[new("My kills",0,0),new("My kills",1,1),new("Double kill",2,2),new("Triple kill",3,3),new("",4,4)]));
@@ -71,5 +67,5 @@ static class Tests
             Check(tile>0 && columns*(tile+10)<=width+.01,"tile rows overflow at "+width);
         }
     }
-    public static void Main(){ParserAndTracker();Scheduling();MetadataAndLayout();Console.WriteLine($"PASS: {count} LoL parser, identity, deduplication, settings, delay, long-fight, export-race, retry, metadata and tile-layout assertions.");}
+    public static void Main(){ParserAndTracker();MatchWindows();MetadataAndLayout();Console.WriteLine($"PASS: {count} LoL parser, identity, deduplication, settings, match windows, partial tails, compressed chapters, metadata and tile-layout assertions.");}
 }
