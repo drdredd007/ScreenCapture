@@ -42,6 +42,15 @@ internal static class MatchReelChecks
             // Crash after the rename but before the journal was retired.
             File.WriteAllText(journal,snapshot);await MatchReels.Recover(ring);
             Check(!File.Exists(journal) && Directory.GetFiles(Home.Videos,"*.mp4").Count(f=>!existing.Contains(f))==1,"retry created a second reel");
+            var successive=new MatchReels(ring);
+            successive.Observe([events[0]],false,true,0,4);
+            successive.Observe([],true,false,320,321);
+            successive.Observe([events[0] with{RecordingTime=330}],false,false,320,331);
+            var first=await successive.Publish(null,false);
+            var second=await successive.Publish(null,true);
+            Check(first!=null && second!=null && first!=second && ClipEvents.Read(first)!.Events.Single().Seconds==1 &&
+                ClipEvents.Read(second)!.Events.Single().Seconds==10,"consecutive matches shared a reel or chapter");
+            foreach(var file in new[]{first!,second!}){File.Delete(file);File.Delete(file+".events.json");}
             note("Match reel: overlapping highlights, ring pruning, retained audio tracks, decoded chapter positions and idempotent recovery passed.");
         }finally{
             Home.Clear(ring);Home.Clear(assets);

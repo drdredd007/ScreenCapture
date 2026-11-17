@@ -78,12 +78,13 @@ public partial class MainWindow
         jump.Click+=(_,e)=>{
             e.Handled=true;
             if(moments.Length==1){OpenLibraryClip(file,moments[0].Seconds);return;}
-            var menu=new ContextMenu{PlacementTarget=jump,Placement=System.Windows.Controls.Primitives.PlacementMode.Bottom};
+            var menu=new ContextMenu{PlacementTarget=jump,Placement=System.Windows.Controls.Primitives.PlacementMode.Bottom,
+                Background=(Brush)FindResource("Panel"),BorderBrush=(Brush)FindResource("Line"),Padding=new Thickness(4)};
             foreach(var moment in moments){
-                var entry=new MenuItem{Header=$"{Home.Time(moment.Seconds)}   {tag.Label}   ·   game {Home.Time(moment.GameTime)}"};
+                var entry=new MenuItem{Style=(Style)FindResource("ChapterMenuItem"),Header=$"{Home.Time(moment.Seconds)}   {tag.Label}   ·   game {Home.Time(moment.GameTime)}"};
                 entry.Click+=(_,_)=>OpenLibraryClip(file,moment.Seconds);menu.Items.Add(entry);
             }
-            menu.IsOpen=true;
+            jump.ContextMenu=menu;menu.IsOpen=true;
         };
         return jump;
     }
