@@ -66,6 +66,12 @@ internal static class FeatureUiChecks
         Shot(window,Path.Combine(reportDirectory,"library-tiles-compact.png"));
         Find<TextBox>(window,"Search").Text="sample 01";await Layout(window);Require(Cards(window).Count()==1,"tile search differs from list search");await Layout(window);Shot(window,Path.Combine(reportDirectory,"library-event-badges-tiles.png"));
         Click(window,"ListViewButton");await Layout(window);Require(Cards(window).Count()==1 && !Settings.Load().LibraryTiles,"list switch lost filter or persistence");Shot(window,Path.Combine(reportDirectory,"library-event-badges-list.png"));
+        var triple=DescendantButtons(Cards(window).Single()).Single(b=>Text(b).Contains("Triple kill"));
+        triple.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        var preview=Application.Current.Windows.OfType<Editor>().Single();
+        for(int i=0;i<150 && !Find<Button>(preview,"SelectionToTimelineButton").IsEnabled;i++)await Task.Delay(50);
+        Require(Math.Abs(Find<Slider>(preview,"Timeline").Value-.2)<.01,"library event opened at wrong time");
+        preview.Close();for(int i=0;i<100 && preview.IsVisible;i++)await Task.Delay(50);
         Find<TextBox>(window,"Search").Text="does-not-exist";await Layout(window);Require(Cards(window).Count()==0,"empty search");
         window.Width=1090;window.Height=750;Click(window,"SettingsNav");await Layout(window);
         var options=Find<WrapPanel>(window,"LolEventOptions").Children.OfType<CheckBox>().ToArray();
@@ -108,6 +114,13 @@ internal static class FeatureUiChecks
         note("Updates UI: one-click download/prepare/restart, recording/replay/busy/editor guards, installation failure/retry, progress/cancel, current-version and network errors passed.");
         note("List/tiles: event type badges/counts, identical recordings, date groups, filter, empty state, minimum window size and persisted view. All 13 event settings, persistence and enable/disable binding passed.");
         // The surrounding test Application shuts down all windows after PASS.
+    }
+    static IEnumerable<Button> DescendantButtons(DependencyObject root){
+        for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++){
+            var child=VisualTreeHelper.GetChild(root,i);
+            if(child is Button button)yield return button;
+            foreach(var nested in DescendantButtons(child))yield return nested;
+        }
     }
     static string Text(DependencyObject root){
         string result=root is TextBlock text?text.Text:"";

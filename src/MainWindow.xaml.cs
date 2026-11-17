@@ -100,8 +100,9 @@ public partial class MainWindow : Window
                 }
                 if(capture.Replay){
                     if(!cfg.Auto || !Native.IsWindow(capture.Source.Handle) || !IsSelectedGame(gamePid)){await StopCapture();return;}
-                    await SaveAutoReplay();
                     capture.Prune();
+                    string? reel=await capture.PublishHighlights();
+                    if(reel!=null){Message("Match highlights saved · "+Path.GetFileName(reel),true);if(page==1)LoadLibrary();}
                 }
             }else if(cfg.Auto && cfg.Games.Count>0 && ++scanTick%2==0){
                 var match=FindGame();
@@ -136,12 +137,9 @@ public partial class MainWindow : Window
     async Task StopCapture()
     {
         var old=capture;if(old==null)return;
-        await SaveAutoReplay(force:true);
-        bool keep=old.Replay && autoReplay.Pending;
         gameKeys.Stop();capture=null;gamePid=0;ResetAutoSave();
-        Message("Finishing recording…");string? saved=await old.Stop(keep);
-        if(keep){Home.Log("Unsaved auto-replay retained in "+old.Folder);Message("Auto-save failed. Replay source retained in "+old.Folder,true);return;}
-        Message(saved==null?"Replay buffer stopped":"Recording saved · "+Path.GetFileName(saved)+old.AudioWarning,saved!=null);
+        Message("Finishing recording…");string? saved=await old.Stop();
+        Message(saved==null?"Replay buffer stopped":(old.Replay?"Match highlights saved · ":"Recording saved · ")+Path.GetFileName(saved)+old.AudioWarning,saved!=null);
         if(page==1)LoadLibrary();
     }
     async Task SaveCurrentReplay()
@@ -163,6 +161,8 @@ public partial class MainWindow : Window
         if(!initialized)return;
         UpdateButtons(updateCancel!=null);
         var c=capture;DiskLabel.Text=$"Drive {Path.GetPathRoot(Home.Root)!.TrimEnd('\\')}   ·   {Home.Free/1073741824d:0.0} GiB";
+        StateBadge.Background=(Brush)FindResource(c==null?"Panel":"SelectedSurface");
+        StateText.Foreground=(Brush)FindResource(c==null?"Dim":"Mint");
         StateText.Text=c==null?"●  Idle":(c.Replay?"●  Buffer   ":"●  Recording   ")+Home.Time(c.Clock.Elapsed.TotalSeconds);
         RecordButton.Content=c==null?"●   Start recording":c.Replay?"Start manual recording":"■   Stop";
         RecordButton.IsEnabled=gate.CurrentCount!=0 || c!=null;
@@ -181,7 +181,7 @@ public partial class MainWindow : Window
     void ShowPage(int n){
         page=n;PageTitle.Text=new[]{"Capture","Library","Settings"}[n];
         var pages=new[]{CapturePage,LibraryPage,SettingsPage};var nav=new[]{CaptureNav,LibraryNav,SettingsNav};
-        for(int i=0;i<3;i++){pages[i].Visibility=i==n?Visibility.Visible:Visibility.Collapsed;nav[i].Background=BrushOf(i==n?"#2B3932":"Transparent");nav[i].Foreground=BrushOf(i==n?"#B7F59B":"#CBD2D8");}
+        for(int i=0;i<3;i++){pages[i].Visibility=i==n?Visibility.Visible:Visibility.Collapsed;nav[i].Background=(i==n?(Brush)FindResource("SelectedSurface"):Brushes.Transparent);nav[i].Foreground=(Brush)FindResource(i==n?"Mint":"Dim");}
         if(n==1)LoadLibrary();
     }
     void ModeClick(object s,RoutedEventArgs e)=>SetMode(int.Parse((string)((Button)s).Tag));
@@ -189,7 +189,7 @@ public partial class MainWindow : Window
     {
         mode=n;region=null;SourceHeading.Text=new[]{"Screen recording","Window recording","Region recording"}[n];
         SourceDescription.Text=new[]{"Record the entire display, including the cursor.","Record one window, even when another window covers it.","Drag a rectangle on the selected display."}[n];
-        var buttons=new[]{ScreenButton,WindowButton,RegionButton};for(int i=0;i<3;i++)buttons[i].Background=BrushOf(i==n?"#405545":"#29313A");
+        var buttons=new[]{ScreenButton,WindowButton,RegionButton};for(int i=0;i<3;i++)buttons[i].Background=(Brush)FindResource(i==n?"SelectedSurface":"Panel");
         RegionRow.Visibility=n==2?Visibility.Visible:Visibility.Collapsed;RefreshSources();
     }
     void RefreshSources(){var old=(Targets.SelectedItem as Target)?.Handle;var items=mode==1?Native.Windows():Native.Monitors();Targets.ItemsSource=items;Targets.SelectedItem=items.FirstOrDefault(t=>t.Handle==old)??items.FirstOrDefault();}

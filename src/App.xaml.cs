@@ -24,7 +24,12 @@ public partial class App : Application
                         }else File.Move(raw,Home.Unique(Home.Videos,"Recovered recording","mkv"));
                     }
                 }
-                if(name.StartsWith("ring_") && File.Exists(Path.Combine(dir,"keep-replay.txt")))continue;
+                if(name.StartsWith("ring_")){
+                    if(MatchReels.HasJournal(dir)){
+                        try{await MatchReels.Recover(dir);}
+                        catch(Exception ex){Home.Log("Match recovery deferred for "+dir+": "+ex.Message);continue;}
+                    }else if(File.Exists(Path.Combine(dir,"keep-replay.txt")))continue;
+                }
                 if(new[]{"take_","ring_","edit_","view_"}.Any(name.StartsWith))Home.Clear(dir);
             }
             var window=new MainWindow();MainWindow=window;window.Show();

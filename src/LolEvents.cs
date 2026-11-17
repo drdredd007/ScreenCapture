@@ -21,7 +21,7 @@ internal sealed class LolAutoSaveOptions
     public static string Label(LolEventKind kind)=>Choices.FirstOrDefault(c=>c.Kind==kind).Label??"LoL event";
 }
 internal sealed record LolEvent(string Id,double GameTime,LolEventKind Kind,string Label);
-internal sealed record LolSnapshot(double GameTime,string Player,LolEvent[] Events);
+internal sealed record LolSnapshot(double GameTime,string Player,LolEvent[] Events,bool GameOver=false);
 internal static class LolEvents
 {
     static string Text(JsonElement e,string key)=>e.ValueKind==JsonValueKind.Object && e.TryGetProperty(key,out var v) && v.ValueKind==JsonValueKind.String ? v.GetString()??"" : "";
@@ -44,11 +44,11 @@ internal static class LolEvents
         aliases.UnionWith(Names(own[0]));
         aliases.RemoveWhere(name=>list.Count(p=>Names(p).Contains(name,StringComparer.OrdinalIgnoreCase))>1);
         bool IsMe(string name)=>name.Length>0 && aliases.Contains(name);
-        List<LolEvent> result=[];
+        List<LolEvent> result=[];bool gameOver=false;
         if(root.TryGetProperty("events",out var events) && events.ValueKind==JsonValueKind.Object && events.TryGetProperty("Events",out var array) && array.ValueKind==JsonValueKind.Array)
         foreach(var e in array.EnumerateArray()){
             if(!Number(e,"EventTime",out double at) || at<0 || at>time+2 || !e.TryGetProperty("EventID",out var id))continue;
-            var name=Text(e,"EventName");bool killer=IsMe(Text(e,"KillerName"));
+            var name=Text(e,"EventName");if(name=="GameEnd")gameOver=true;bool killer=IsMe(Text(e,"KillerName"));
             bool assist=e.TryGetProperty("Assisters",out var helpers) && helpers.ValueKind==JsonValueKind.Array && helpers.EnumerateArray().Any(p=>p.ValueKind==JsonValueKind.String && IsMe(p.GetString()??""));
             bool stolen=e.TryGetProperty("Stolen",out var theft) && (theft.ValueKind==JsonValueKind.True || theft.ValueKind==JsonValueKind.String && bool.TryParse(theft.GetString(),out bool yes) && yes);
             LolEventKind kind=name switch{
@@ -63,7 +63,7 @@ internal static class LolEvents
             // Keep unselected/enemy events in the stream so changing filters cannot replay history.
             result.Add(new(id.GetRawText()+":"+name+":"+at.ToString("R",System.Globalization.CultureInfo.InvariantCulture),at,kind,LolAutoSaveOptions.Label(kind)));
         }
-        return new(time,player,result.ToArray());
+        return new(time,player,result.ToArray(),gameOver);
     }
 }
 internal sealed class LolEventTracker

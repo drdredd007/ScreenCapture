@@ -22,6 +22,7 @@ internal sealed class AppAudioArchive
     readonly HashSet<string> warnings=new(StringComparer.OrdinalIgnoreCase);
     readonly byte[] block=new byte[480*4];
     int pruned;
+    readonly HashSet<int> retained=[];
     static string Chunk(int n)=>n.ToString("D8",CultureInfo.InvariantCulture)+".wav";
     public static string DirectoryFor(string folder)=>Path.Combine(folder,"app-audio");
     public string Warning {get{lock(sync)return warnings.Count==0?"":" Some app audio was unavailable. See Moments.log.";}}
@@ -89,11 +90,19 @@ internal sealed class AppAudioArchive
     public void Flush(bool close){
         lock(sync)foreach(var s in stems.Values){s.Writer?.Flush();if(close){s.Writer?.Dispose();s.Writer=null;}}
     }
-    public void PruneBefore(int earliest){
+    public void PruneBefore(int earliest,IReadOnlySet<int>? keep=null){
         lock(sync){
-            for(int n=pruned;n<earliest;n++)foreach(var stem in stems.Values){
-                if(stem.Chunk==n){stem.Writer?.Dispose();stem.Writer=null;}
-                File.Delete(Path.Combine(directory,stem.Id,Chunk(n)));
+            void Remove(int n){
+                foreach(var stem in stems.Values){
+                    if(stem.Chunk==n){stem.Writer?.Dispose();stem.Writer=null;}
+                    File.Delete(Path.Combine(directory,stem.Id,Chunk(n)));
+                }
+            }
+            foreach(int n in retained.Where(n=>keep?.Contains(n)!=true).ToArray()){
+                Remove(n);retained.Remove(n);
+            }
+            for(int n=pruned;n<earliest;n++){
+                if(keep?.Contains(n)==true)retained.Add(n);else Remove(n);
             }
             pruned=Math.Max(pruned,earliest);
         }
@@ -112,7 +121,7 @@ internal sealed class AppAudioArchive
         }
         return false;
     }
-    public async Task Mux(string[] videoInputs,string output,double from,double duration){
+    public async Task Mux(string[] videoInputs,string output,double from,double duration,int[]? segments=null){
         if(duration<=0)throw new IOException("There is no recorded media to save.");
         int first=(int)Math.Floor(from/Capture.Segment),last=(int)Math.Ceiling((from+duration)/Capture.Segment)-1;
         Stem[] tracks;
@@ -124,11 +133,11 @@ internal sealed class AppAudioArchive
         try{
             foreach(var stem in tracks){
                 List<string> lines=[];bool sound=false;
-                for(int n=first;n<=last;n++){
+                foreach(int n in segments??Enumerable.Range(first,last-first+1).ToArray()){
                     string relative=stem.Id+"/"+Chunk(n);
                     string path=Path.Combine(directory,relative);
                     if(!File.Exists(path))relative="silence.wav";
-                    else if(!sound)sound=HasSound(path,n,from,from+duration);
+                    else if(!sound)sound=segments!=null || HasSound(path,n,from,from+duration);
                     lines.Add($"file '{relative}'");lines.Add("duration "+Capture.Segment);
                 }
                 if(!sound)continue;

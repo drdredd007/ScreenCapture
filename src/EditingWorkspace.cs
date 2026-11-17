@@ -20,9 +20,9 @@ internal sealed class EditingWorkspace
         };
         WindowsChanged?.Invoke();window.Show();return window;
     }
-    public Editor OpenClip(string file){
+    public Editor OpenClip(string file,double start=0){
         if(closing)throw new InvalidOperationException("The editing workspace is closing.");
-        return Track(new Editor(file,this));
+        return Track(new Editor(file,this,start));
     }
     public AssemblyWindow OpenTimeline(){
         if(closing)throw new InvalidOperationException("The editing workspace is closing.");

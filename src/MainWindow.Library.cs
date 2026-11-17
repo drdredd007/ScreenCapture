@@ -5,10 +5,10 @@ namespace Moments;
 public partial class MainWindow
 {
     void RefreshLibraryViewButtons(){
-        ListViewButton.Background=BrushOf(cfg.LibraryTiles?"#29313A":"#405545");
-        TilesViewButton.Background=BrushOf(cfg.LibraryTiles?"#405545":"#29313A");
-        ListViewButton.Foreground=BrushOf(cfg.LibraryTiles?"#CBD2D8":"#B7F59B");
-        TilesViewButton.Foreground=BrushOf(cfg.LibraryTiles?"#B7F59B":"#CBD2D8");
+        ListViewButton.Background=(Brush)FindResource(cfg.LibraryTiles?"Panel":"SelectedSurface");
+        TilesViewButton.Background=(Brush)FindResource(cfg.LibraryTiles?"SelectedSurface":"Panel");
+        ListViewButton.Foreground=(Brush)FindResource(cfg.LibraryTiles?"Dim":"Mint");
+        TilesViewButton.Foreground=(Brush)FindResource(cfg.LibraryTiles?"Mint":"Dim");
     }
     void LibraryViewClick(object sender,RoutedEventArgs e){
         bool tiles=((Button)sender).Tag as string=="tiles";if(tiles==cfg.LibraryTiles)return;
@@ -24,21 +24,25 @@ public partial class MainWindow
     }
     Button LibraryCard(FileInfo file,bool tiles,List<(Image,FileInfo)> thumbnails){
         double width=LibraryLayout.TileWidth(ClipList.ActualWidth);
-        var button=new Button{HorizontalContentAlignment=HorizontalAlignment.Stretch,VerticalContentAlignment=VerticalAlignment.Top,
+        var button=new Button{Background=(Brush)FindResource("Panel"),BorderBrush=(Brush)FindResource("Line"),HorizontalContentAlignment=HorizontalAlignment.Stretch,VerticalContentAlignment=VerticalAlignment.Top,
             Margin=tiles?new Thickness(0,0,10,10):new Thickness(0,0,0,6),Padding=new Thickness(8),ToolTip=file.Name};
         var image=new Image{Stretch=Stretch.Uniform};
         var preview=new Border{Background=BrushOf("#0C1116"),Child=image,CornerRadius=new CornerRadius(3),ClipToBounds=true};
         thumbnails.Add((image,file));
         var words=new StackPanel{VerticalAlignment=VerticalAlignment.Center};
-        words.Children.Add(new TextBlock{Text=Home.ClipTitle(file.Name),TextTrimming=TextTrimming.CharacterEllipsis,FontWeight=FontWeights.SemiBold,
+        words.Children.Add(new TextBlock{Text=Home.ClipTitle(file.Name),TextTrimming=TextTrimming.CharacterEllipsis,FontWeight=FontWeights.SemiBold,FontSize=15,
             TextWrapping=tiles?TextWrapping.Wrap:TextWrapping.NoWrap,MaxHeight=tiles?42:24});
         words.Children.Add(new TextBlock{Text=$"{file.CreationTime:HH:mm}   ·   {file.Extension[1..].ToUpperInvariant()}   ·   {file.Length/1048576d:0.#} MB",Style=(Style)FindResource("Sub"),FontSize=12});
         var markers=ClipEvents.Read(file.FullName);
         var tags=LibraryLayout.EventTags(markers);
         if(tags.Length>0){
             var badges=new WrapPanel{Tag="EventTags",Margin=new Thickness(0,5,0,0),ToolTip=markers!.Game+" · saved events"};
-            foreach(var tag in tags)badges.Children.Add(new Border{CornerRadius=new CornerRadius(4),Background=BrushOf("#304338"),Padding=new Thickness(6,2,6,2),Margin=new Thickness(0,0,5,4),
-                Child=new TextBlock{Text=tag.Label+(tag.Count>1?$" ×{tag.Count}":""),Foreground=BrushOf("#B7F59B"),FontSize=11},ToolTip=$"{tag.Label}: {tag.Count} saved events"});
+            foreach(var tag in tags){
+                var moments=markers.Events.Where(e=>e!=null && !string.IsNullOrWhiteSpace(e.Label) &&
+                    double.IsFinite(e.Seconds) && e.Seconds>=0 && LibraryLayout.EventLabel(e.Label).Equals(tag.Label,StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(e=>e.Seconds).ToArray();
+                badges.Children.Add(EventButton(file.FullName,tag,moments));
+            }
             words.Children.Add(badges);
         }
         if(tiles){
@@ -51,7 +55,37 @@ public partial class MainWindow
             Grid.SetColumn(words,1);grid.Children.Add(words);
             var edit=new TextBlock{Text="Edit  ›",Margin=new Thickness(10,0,5,0)};Grid.SetColumn(edit,2);grid.Children.Add(edit);button.Content=grid;
         }
-        button.Click+=(_,_)=>{if(quitting || installingUpdate || updateHandedOff)return;Editing.OpenClip(file.FullName);};return button;
+        button.Click+=(_,_)=>OpenLibraryClip(file.FullName);return button;
+    }
+    void OpenLibraryClip(string file,double start=0){
+        if(quitting || installingUpdate || updateHandedOff)return;
+        try{Editing.OpenClip(file,start);}
+        catch(Exception ex) when(ex is IOException or UnauthorizedAccessException){Message("Could not open recording. "+ex.Message);LoadLibrary();}
+    }
+    Button EventButton(string file,LibraryLayout.EventTag tag,ClipEvent[] moments){
+        string tone=tag.Label switch{
+            "Pentakill" or "Quadra kill" or "Triple kill"=>"MajorEvent",
+            "Double kill" or "Dragon steal" or "Baron steal"=>"SpecialEvent",
+            _=>"Mint"
+        };
+        var ink=(Brush)FindResource(tone);
+        var caption=new StackPanel{Orientation=Orientation.Horizontal};
+        caption.Children.Add(new TextBlock{Text=tag.Label+(moments.Length>1?$" ×{moments.Length}":""),Foreground=ink,FontWeight=FontWeights.SemiBold});
+        caption.Children.Add(new TextBlock{Text=moments.Length==1?Home.Time(moments[0].Seconds):"▾",Margin=new Thickness(7,0,0,0),Foreground=(Brush)FindResource("Dim")});
+        var jump=new Button{Content=caption,Background=(Brush)FindResource("Back"),BorderBrush=(Brush)FindResource("Line"),FontSize=11,
+            Margin=new Thickness(0,3,5,2),Padding=new Thickness(7,3,7,3),ToolTip=moments.Length==1?"Open at this moment":"Choose a moment"};
+        System.Windows.Automation.AutomationProperties.SetName(jump,tag.Label+" · "+(moments.Length==1?Home.Time(moments[0].Seconds):moments.Length+" events"));
+        jump.Click+=(_,e)=>{
+            e.Handled=true;
+            if(moments.Length==1){OpenLibraryClip(file,moments[0].Seconds);return;}
+            var menu=new ContextMenu{PlacementTarget=jump,Placement=System.Windows.Controls.Primitives.PlacementMode.Bottom};
+            foreach(var moment in moments){
+                var entry=new MenuItem{Header=$"{Home.Time(moment.Seconds)}   {tag.Label}   ·   game {Home.Time(moment.GameTime)}"};
+                entry.Click+=(_,_)=>OpenLibraryClip(file,moment.Seconds);menu.Items.Add(entry);
+            }
+            menu.IsOpen=true;
+        };
+        return jump;
     }
     async void LoadLibrary()
     {
