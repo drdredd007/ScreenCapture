@@ -20,7 +20,12 @@ internal sealed class MatchReels(string folder)
     public void Observe(IEnumerable<ReplayEvent> incoming,bool newMatch,bool gameOver,double matchStart,double now){
         if(newMatch){
             int boundary=Math.Max(0,(int)Math.Floor(matchStart/Capture.Segment));
-            if(active!=null)Replace(active with{EndSegment=boundary});
+            if(active!=null){
+                // The API can reconnect mid-game with a different player identity.
+                // Never put the boundary before the last event already collected.
+                boundary=Math.Max(boundary,(int)(active.Events.Max(e=>e.RecordingTime)/Capture.Segment)+1);
+                Replace(active with{EndSegment=boundary});
+            }
             active=null;firstSegment=boundary;ended=false;
         }
         if(!ended){
@@ -62,10 +67,10 @@ internal sealed class MatchReels(string folder)
             ??throw new InvalidDataException("Unreadable highlight journal.");
         book.matches.AddRange(pending);
         var apps=Directory.Exists(AppAudioArchive.DirectoryFor(folder))?AppAudioArchive.Reopen(folder):null;
-        await book.Publish(apps,true);
+        await book.Publish(apps,true,recovering:true);
     }
 
-    public async Task<string?> Publish(AppAudioArchive? apps,bool stopped){
+    public async Task<string?> Publish(AppAudioArchive? apps,bool stopped,bool recovering=false){
         Checkpoint();
         var ready=matches.Where(m=>stopped || m.EndSegment.HasValue).ToArray();
         if(ready.Length==0)return null;
@@ -82,29 +87,42 @@ internal sealed class MatchReels(string folder)
                 throw new InvalidDataException("Invalid match output name.");
             string output=Path.Combine(Home.Videos,match.Output);
             if(!File.Exists(output) || !File.Exists(output+".events.json"))
-                await Render(match,wanted,available,apps,output);
+                await Render(match,wanted,available,apps,output,recovering);
             matches.Remove(match);dirty=true;Checkpoint();last=output;
         }
         return last;
     }
 
-    async Task Render(MatchHighlights match,int[] wanted,int[] available,AppAudioArchive? apps,string output){
+    async Task Render(MatchHighlights match,int[] wanted,int[] available,AppAudioArchive? apps,string output,bool recovering){
         int[] selected=wanted.Where(n=>n>=available[0] && n<=available[^1]).ToArray();
         if(selected.Length==0 || selected.Except(available).Any())throw new IOException("Some highlight segments are unavailable.");
         string SegmentName(int number)=>number.ToString("D8")+".mkv";
-        var tail=await Media.Probe(Path.Combine(folder,SegmentName(selected[^1])));
+        if(recovering && selected.Length>1 && selected[^1]==available[^1] &&
+            new FileInfo(Path.Combine(folder,SegmentName(selected[^1]))).Length==0)
+            selected=selected[..^1];
+        string tailName=SegmentName(selected[^1]);
+        string repaired=Path.Combine(folder,"highlight-tail.mkv");
+        ClipInfo tail;
+        try{tail=await Media.Probe(Path.Combine(folder,tailName));}
+        catch(Exception ex) when(recovering && selected[^1]==available[^1] &&
+            ex is IOException or KeyNotFoundException or FormatException or InvalidOperationException){
+            // A crash can leave the last Matroska segment without a duration.
+            // Remux its readable packets before deciding what can be recovered.
+            await Proc.Run("ffmpeg",["-v","error","-y","-i",Path.Combine(folder,tailName),"-map","0","-c","copy",repaired]);
+            tail=await Media.Probe(repaired);tailName=Path.GetFileName(repaired);
+        }
         double duration=(selected.Length-1)*Capture.Segment+Math.Min(Capture.Segment,tail.Duration);
         var chapters=match.Chapters(selected,duration);
         if(chapters.Length==0)throw new IOException("No event is inside the available recording.");
         string manifest=Path.Combine(folder,"highlights.ffconcat"),temp=Path.Combine(folder,"highlights.mp4");
         try{
-            File.WriteAllLines(manifest,selected.Select(n=>$"file '{SegmentName(n)}'"+Environment.NewLine+"duration "+Capture.Segment),new UTF8Encoding(false));
+            File.WriteAllLines(manifest,selected.Select(n=>$"file '{(n==selected[^1]?tailName:SegmentName(n))}'"+Environment.NewLine+"duration "+Capture.Segment),new UTF8Encoding(false));
             string[] input=["-f","concat","-safe","1","-i",manifest];
             if(apps==null)await Media.Remux(input,temp,duration:duration);
             else await apps.Mux(input,temp,0,duration,selected);
             // Publish metadata first. The library sees the MP4 only once both files are ready.
             new ClipEvents("League of Legends",chapters).Save(output);
             File.Move(temp,output,true);
-        }finally{File.Delete(temp);File.Delete(manifest);}
+        }finally{File.Delete(temp);File.Delete(manifest);File.Delete(repaired);}
     }
 }

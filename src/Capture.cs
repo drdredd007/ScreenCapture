@@ -31,7 +31,12 @@ internal sealed class Capture
     }
     public const int Segment=MatchHighlights.SegmentSeconds;
     public MatchReels Highlights {get;}
-    public Task<string?> PublishHighlights()=>Highlights.Publish(apps,false);
+    double retryHighlightsAt;
+    public async Task<string?> PublishHighlights(){
+        if(Clock.Elapsed.TotalSeconds<retryHighlightsAt)return null;
+        try{return await Highlights.Publish(apps,false);}
+        catch{retryHighlightsAt=Clock.Elapsed.TotalSeconds+15;throw;}
+    }
     public async Task Start()
     {
         try{

@@ -71,6 +71,9 @@ internal static class FeatureUiChecks
         var preview=Application.Current.Windows.OfType<Editor>().Single();
         for(int i=0;i<150 && !Find<Button>(preview,"SelectionToTimelineButton").IsEnabled;i++)await Task.Delay(50);
         Require(Math.Abs(Find<Slider>(preview,"Timeline").Value-.2)<.01,"library event opened at wrong time");
+        var secondMark=DescendantButtons(Cards(window).Single()).Single(b=>Text(b).Contains("Double kill"));
+        secondMark.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Require(Application.Current.Windows.OfType<Editor>().Single()==preview && Math.Abs(Find<Slider>(preview,"Timeline").Value-.1)<.01,"second jump reopened the same clip");
         preview.Close();for(int i=0;i<100 && preview.IsVisible;i++)await Task.Delay(50);
         Find<TextBox>(window,"Search").Text="does-not-exist";await Layout(window);Require(Cards(window).Count()==0,"empty search");
         window.Width=1090;window.Height=750;Click(window,"SettingsNav");await Layout(window);

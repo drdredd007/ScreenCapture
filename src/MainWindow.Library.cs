@@ -57,7 +57,7 @@ public partial class MainWindow
         }
         button.Click+=(_,_)=>OpenLibraryClip(file.FullName);return button;
     }
-    void OpenLibraryClip(string file,double start=0){
+    void OpenLibraryClip(string file,double? start=null){
         if(quitting || installingUpdate || updateHandedOff)return;
         try{Editing.OpenClip(file,start);}
         catch(Exception ex) when(ex is IOException or UnauthorizedAccessException){Message("Could not open recording. "+ex.Message);LoadLibrary();}

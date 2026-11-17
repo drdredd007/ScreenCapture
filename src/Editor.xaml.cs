@@ -10,7 +10,7 @@ public partial class Editor : Window
 {
     readonly string path,folder=Home.Temp("view");
     readonly EditingWorkspace workspace;
-    readonly double initialPosition;
+    double initialPosition;
     bool sending;
     readonly CancellationTokenSource life=new();
     CancellationTokenSource? exporting;
@@ -41,6 +41,13 @@ public partial class Editor : Window
             if(e.Key==System.Windows.Input.Key.A){SetA(this,new());e.Handled=true;}
             if(e.Key==System.Windows.Input.Key.B){SetB(this,new());e.Handled=true;}
         };
+    }
+    internal bool CanSeekFile(string file)=>!closing && string.Equals(path,file,StringComparison.OrdinalIgnoreCase);
+    internal void JumpTo(double seconds){
+        initialPosition=seconds;
+        if(info==null || closing)return;
+        if(ready){Pause();Seek(seconds);}
+        else{SetSlider(Math.Clamp(seconds,0,info.Duration));Video.Display(path,info,Timeline.Value,false);}
     }
     void Say(string msg){Feedback.Text=msg;Feedback.ToolTip=msg;}
     async Task Prepare()

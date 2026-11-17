@@ -20,9 +20,17 @@ internal sealed class EditingWorkspace
         };
         WindowsChanged?.Invoke();window.Show();return window;
     }
-    public Editor OpenClip(string file,double start=0){
+    public Editor OpenClip(string file,double? start=null){
         if(closing)throw new InvalidOperationException("The editing workspace is closing.");
-        return Track(new Editor(file,this,start));
+        if(start.HasValue){
+            var existing=windows.Keys.OfType<Editor>().LastOrDefault(editor=>editor.CanSeekFile(file));
+            if(existing!=null){
+                existing.JumpTo(start.Value);
+                if(existing.WindowState==WindowState.Minimized)existing.WindowState=WindowState.Normal;
+                existing.Activate();return existing;
+            }
+        }
+        return Track(new Editor(file,this,start??0));
     }
     public AssemblyWindow OpenTimeline(){
         if(closing)throw new InvalidOperationException("The editing workspace is closing.");

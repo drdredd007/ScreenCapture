@@ -14,6 +14,7 @@ public partial class App : Application
             if(e.Args.Contains("--self-test")){await Verification.Run();Shutdown(0);return;}
             singleton=new Mutex(true,@"Local\MomentsStudio_FMoments",out bool first);
             if(!first){using var signal=EventWaitHandle.OpenExisting(@"Local\MomentsStudio_Show");signal.Set();Shutdown();return;}
+            var pendingMatches=new List<string>();
             foreach(string dir in Directory.GetDirectories(Home.Work)){
                 var name=Path.GetFileName(dir);if(name.StartsWith("take_")){
                     var raw=Path.Combine(dir,"take.mkv");
@@ -26,8 +27,7 @@ public partial class App : Application
                 }
                 if(name.StartsWith("ring_")){
                     if(MatchReels.HasJournal(dir)){
-                        try{await MatchReels.Recover(dir);}
-                        catch(Exception ex){Home.Log("Match recovery deferred for "+dir+": "+ex.Message);continue;}
+                        pendingMatches.Add(dir);continue;
                     }else if(File.Exists(Path.Combine(dir,"keep-replay.txt")))continue;
                 }
                 if(new[]{"take_","ring_","edit_","view_"}.Any(name.StartsWith))Home.Clear(dir);
@@ -38,7 +38,16 @@ public partial class App : Application
                 Home.Log("Update failed: "+File.ReadAllText(e.Args[1]));
                 MessageBox.Show("The update could not be installed. Your previous version is running.\n\nDetails: "+e.Args[1],"Moments update");
             }
+            _=RecoverMatches(pendingMatches,window);
         }catch(Exception ex){Home.Log(ex.ToString());if(!e.Args.Contains("--self-test"))MessageBox.Show(ex.Message,"Moments");Shutdown(1);}
+    }
+    static async Task RecoverMatches(IEnumerable<string> folders,MainWindow window){
+        foreach(string folder in folders){
+            try{
+                await MatchReels.Recover(folder);Home.Clear(folder);
+                window.Editing.NotifyLibraryChanged();
+            }catch(Exception ex){Home.Log("Match recovery deferred for "+folder+": "+ex.Message);}
+        }
     }
     protected override void OnExit(ExitEventArgs e){singleton?.Dispose();base.OnExit(e);}
 }

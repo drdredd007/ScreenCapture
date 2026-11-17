@@ -124,6 +124,7 @@ internal sealed class AppAudioArchive
     public async Task Mux(string[] videoInputs,string output,double from,double duration,int[]? segments=null){
         if(duration<=0)throw new IOException("There is no recorded media to save.");
         int first=(int)Math.Floor(from/Capture.Segment),last=(int)Math.Ceiling((from+duration)/Capture.Segment)-1;
+        IEnumerable<int> chunks=segments is null?Enumerable.Range(first,last-first+1):segments;
         Stem[] tracks;
         lock(sync){
             Flush(close:false);
@@ -133,7 +134,7 @@ internal sealed class AppAudioArchive
         try{
             foreach(var stem in tracks){
                 List<string> lines=[];bool sound=false;
-                foreach(int n in segments??Enumerable.Range(first,last-first+1).ToArray()){
+                foreach(int n in chunks){
                     string relative=stem.Id+"/"+Chunk(n);
                     string path=Path.Combine(directory,relative);
                     if(!File.Exists(path))relative="silence.wav";
